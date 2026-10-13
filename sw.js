@@ -2,7 +2,7 @@
 // Bump VERSION whenever app files change so iPads pick up the new version.
 // Each version's files are fetched together, bypassing the browser's HTTP cache, and never
 // refreshed piecemeal — so a new app.js can't end up paired with an old logic.js.
-const VERSION = 'v18';
+const VERSION = 'v19';
 const CACHE = `done-like-dinner-${VERSION}`;
 const SHELL = [
   './',

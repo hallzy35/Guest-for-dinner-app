@@ -1602,6 +1602,32 @@ function viewBackup() {
 const helpLink = (topic, label = 'How this works') =>
   `<a class="help-link no-print" href="#/help/${topic}" aria-label="Help: ${esc(label)}">? ${esc(label)}</a>`;
 
+// From the Home Screen app, opening the PDF directly replaces the app with no way back, so
+// hand it to the share sheet instead (Print, Save to Files, Books). Elsewhere it opens in a new tab.
+// The file is fetched ahead of the tap: iPadOS only allows sharing straight after a tap.
+function wireGuidePdf(link) {
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (!standalone) return; // a normal browser tab: the link opens the PDF in a new tab
+  let file = null;
+  const ready = fetch(link.getAttribute('href'))
+    .then(r => (r.ok ? r.blob() : Promise.reject(new Error(r.status))))
+    .then(b => (file = new File([b], 'Done Like Dinner - user guide.pdf', { type: 'application/pdf' })))
+    .catch(() => null);
+  link.addEventListener('click', async e => {
+    e.preventDefault();
+    const f = file || (await ready);
+    if (!f || !navigator.canShare?.({ files: [f] })) {
+      toast('Couldn’t open the guide here — try again, or open the app in Safari.');
+      return;
+    }
+    try {
+      await navigator.share({ files: [f], title: 'Done Like Dinner — user guide' });
+    } catch (err) {
+      if (err.name !== 'AbortError') toast('Couldn’t open the share sheet — tap the button again.');
+    }
+  });
+}
+
 function viewHelp(topicId) {
   setTitle('Help');
   const topic = t => `
@@ -1617,12 +1643,13 @@ function viewHelp(topicId) {
   main.innerHTML = `
     <div class="help-head">
       <h1 class="help-title">How to use ${APP_NAME}</h1>
-      <a class="btn primary no-print" href="help/guide.pdf" target="_blank" rel="noopener">Printable guide (PDF)</a>
+      <a class="btn primary no-print" href="help/guide.pdf" target="_blank" rel="noopener" id="guide-pdf">Print or save the guide (PDF)</a>
     </div>
     <nav class="card help-toc no-print" aria-label="Help topics">
       <ol>${HELP_TOPICS.map(t => `<li><a href="#/help/${t.id}">${esc(t.title)}</a></li>`).join('')}</ol>
     </nav>
     ${HELP_TOPICS.map(topic).join('')}`;
+  wireGuidePdf(document.getElementById('guide-pdf'));
   if (topicId) document.getElementById(`help-${topicId}`)?.scrollIntoView();
 }
 
