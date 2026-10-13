@@ -9,6 +9,32 @@
 
 export const COURSES = ['Cocktail / appetizer', 'Starter', 'Soup', 'Salad', 'Main', 'Side', 'Cheese', 'Dessert', 'Other'];
 
+// The recipe-card fields, matching the chef's printed recipe pages.
+export const CATEGORIES = ['Appy', 'Pasta', 'Starch', 'Entrée', 'Veggie', 'Dessert', 'Snack', 'Other'];
+export const STYLES = { 1: 'Plain', 2: 'Day to day', 3: 'Elegant' };
+export const COMPLEXITY = { 1: 'Simple', 2: 'A bit of work', 3: 'Whoa, nellie!' };
+
+export function emptyDish(name = '', course = '') {
+  return {
+    id: newId(),
+    name,
+    course,
+    category: '',
+    mainIngredient: '',
+    style: 0,
+    complexity: 0,
+    prep: '',
+    cook: '',
+    total: '',
+    ingredients: [],
+    instructions: '',
+    cuisine: '',
+    source: '',
+    stars: 0,
+    notes: '',
+  };
+}
+
 export const RECEPTION = {
   hit: 'Loved it',
   ok: 'Fine',
@@ -103,7 +129,7 @@ export function termMatches(term, text) {
 
 // Which of a guest's allergies/dislikes appear in a dish's name or listed ingredients.
 export function dishConflicts(guest, dish) {
-  const haystacks = [dish.name, ...(dish.ingredients || [])];
+  const haystacks = [dish.name, dish.mainIngredient || '', ...(dish.ingredients || [])];
   const out = [];
   for (const [kind, terms] of [['allergy', guest.allergies || []], ['dislike', guest.dislikes || []]]) {
     for (const term of terms) {
@@ -144,7 +170,8 @@ export function search(state, query) {
       (g.allergies || []).some(hit) || (g.dislikes || []).some(hit),
   );
   const dishes = state.dishes.filter(
-    d => hit(d.name) || hit(d.notes) || hit(d.course) || (d.ingredients || []).some(hit),
+    d => hit(d.name) || hit(d.notes) || hit(d.course) || hit(d.category) || hit(d.mainIngredient) || hit(d.cuisine) ||
+      hit(d.source) || (d.ingredients || []).some(hit),
   );
   const events = sortEventsDesc(
     state.events.filter(
@@ -177,7 +204,7 @@ export function validateBackup(data) {
   }
   return {
     guests: data.guests.map(g => ({ drinks: '', likes: '', notes: '', dislikes: [], allergies: [], ...g })),
-    dishes: data.dishes.map(d => ({ course: '', notes: '', ingredients: [], ...d })),
+    dishes: data.dishes.map(normalizeDish),
     events: data.events.map(e => ({
       title: '', time: '', beverages: '', worked: '', didnt: '', notes: '', guestIds: [], dishes: [], ...e,
     })),
@@ -224,12 +251,13 @@ export function mergeDishes(state, keepId, dropId) {
   const keep = byId(state.dishes, keepId);
   const drop = byId(state.dishes, dropId);
   if (!keep || !drop || keepId === dropId) throw new Error('Pick two different dishes.');
-  const dish = {
-    ...keep,
-    course: keep.course || drop.course,
-    ingredients: unionList(keep.ingredients, drop.ingredients),
-    notes: joinText(keep.notes, drop.notes, '\n'),
-  };
+  const dish = { ...keep };
+  for (const f of ['course', 'category', 'mainIngredient', 'style', 'complexity', 'prep', 'cook', 'total', 'cuisine', 'source', 'stars']) {
+    dish[f] = keep[f] || drop[f] || dish[f];
+  }
+  dish.ingredients = unionList(keep.ingredients, drop.ingredients);
+  dish.instructions = joinText(keep.instructions || '', drop.instructions || '', '\n\n');
+  dish.notes = joinText(keep.notes, drop.notes, '\n');
   const events = state.events
     .filter(e => e.dishes.some(d => d.dishId === dropId))
     .map(e => {
@@ -396,4 +424,58 @@ export function googleCalendarUrl(state, ev) {
     details: eventDescription(state, ev),
   });
   return `https://calendar.google.com/calendar/render?${p}`;
+}
+
+// ---------- recipe files ----------
+
+const clampInt = (v, max) => {
+  const n = Math.round(Number(v));
+  return n >= 1 && n <= max ? n : 0;
+};
+
+// Fills in any missing recipe fields and coerces types, so older records and imported files look alike.
+export function normalizeDish(d) {
+  const base = emptyDish();
+  const out = { ...base, ...d, id: d.id || base.id };
+  out.name = String(out.name ?? '').trim();
+  out.ingredients = (Array.isArray(out.ingredients) ? out.ingredients : String(out.ingredients ?? '').split(/\r?\n/))
+    .map(x => String(x).trim())
+    .filter(Boolean);
+  out.style = clampInt(out.style, 3);
+  out.complexity = clampInt(out.complexity, 3);
+  const stars = Math.round(Number(out.stars) * 2) / 2;
+  out.stars = stars >= 0.5 && stars <= 5 ? stars : 0;
+  if (!CATEGORIES.includes(out.category)) {
+    const n = Number(out.category);
+    out.category = n >= 1 && n <= 8 ? CATEGORIES[n - 1] : '';
+  }
+  for (const f of ['course', 'mainIngredient', 'prep', 'cook', 'total', 'instructions', 'cuisine', 'source', 'notes']) {
+    out[f] = String(out[f] ?? '').trim();
+  }
+  return out;
+}
+
+// Reads a recipe file (made from scanned recipe pages) and works out, for each recipe,
+// whether it is new or updates a dish already in the app (matched by name).
+export function planRecipeImport(state, data) {
+  const list = Array.isArray(data) ? data : data?.recipes;
+  if (!Array.isArray(list) || !list.length) throw new Error('No recipes found in this file.');
+  return list.map(raw => {
+    const recipe = normalizeDish({ ...raw, id: undefined });
+    if (!recipe.name) throw new Error('A recipe in this file has no name.');
+    const existing = findByName(state.dishes, recipe.name);
+    return { recipe, existing };
+  });
+}
+
+// Applies an imported recipe onto an existing dish: card fields win where the card has a value,
+// and the dish keeps its id, history, course and anything the card leaves blank.
+export function applyRecipe(existing, recipe) {
+  const out = { ...existing };
+  for (const [k, v] of Object.entries(recipe)) {
+    if (k === 'id') continue;
+    const empty = v === '' || v === 0 || (Array.isArray(v) && !v.length);
+    if (!empty) out[k] = v;
+  }
+  return normalizeDish(out);
 }

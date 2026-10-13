@@ -1,6 +1,6 @@
 import * as db from './db.js';
 import {
-  COURSES, RECEPTION, autocheck, buildICS, byId, dishHistory, emptyState, findByName, googleCalendarUrl, guestHistory,
+  CATEGORIES, COMPLEXITY, COURSES, RECEPTION, STYLES, applyRecipe, autocheck, emptyDish, normalizeDish, planRecipeImport, buildICS, byId, dishHistory, emptyState, findByName, googleCalendarUrl, guestHistory,
   mergeDishes, mergeGuests, newId, norm, parseDishList, search, sortEventsDesc, splitList, suggest, validateBackup,
 } from './logic.js';
 
@@ -80,10 +80,22 @@ function guestLinks(ids, exclude) {
 
 function debounce(fn, ms) {
   let t;
-  return (...a) => {
+  let pending = null;
+  const run = () => {
     clearTimeout(t);
-    t = setTimeout(() => fn(...a), ms);
+    if (pending) {
+      const a = pending;
+      pending = null;
+      fn(...a);
+    }
   };
+  const d = (...a) => {
+    pending = a;
+    clearTimeout(t);
+    t = setTimeout(run, ms);
+  };
+  d.flush = run;
+  return d;
 }
 
 function toast(msg) {
@@ -153,7 +165,7 @@ async function createGuest(name) {
 }
 
 async function createDish(name, course = '') {
-  const d = { id: newId(), name: name.trim(), course, ingredients: [], notes: '' };
+  const d = emptyDish(name.trim(), course);
   await save('dishes', d);
   return d;
 }
@@ -271,7 +283,7 @@ function homeDefault() {
     return `<div class="empty">
       <h2>Welcome</h2>
       <p>Start by recording a past dinner from your journal, or planning the next one. Guests and dishes you type are saved automatically, so they autocomplete next time.</p>
-      <p class="btn-row center"><a class="btn primary" href="#/event/new">＋ Add your first event</a> <a class="btn" href="#/import">Add dishes from your cookbook</a></p>
+      <p class="btn-row center"><a class="btn primary" href="#/event/new">＋ Add your first event</a> <a class="btn" href="#/settings">Add dishes from your cookbook</a></p>
     </div>`;
   }
   const t = today();
@@ -348,9 +360,7 @@ function viewList(kind) {
   }[kind];
   const upcoming = state.events.filter(e => e.date >= today()).sort((a, b) => a.date.localeCompare(b.date));
   const extraBtn =
-    kind === 'dishes'
-      ? '<a class="btn" href="#/import">Add many at once</a>'
-      : kind === 'events' && upcoming.length
+    kind === 'events' && upcoming.length
         ? `<button class="btn" id="cal-all">📅 Add ${plural(upcoming.length, 'upcoming event')} to Calendar</button>`
         : '';
   setTitle(conf.title);
@@ -461,25 +471,141 @@ function viewGuest(id) {
   });
 }
 
-// ----- dish -----
+// ----- dishes: recipe index and recipe card -----
 
-function viewDish(id) {
+function starText(n) {
+  if (!n) return '';
+  const full = Math.floor(n);
+  return `<span class="stars" aria-label="${n} stars">${'★'.repeat(full)}${n % 1 ? '½' : ''}<span class="stars-num">${n}</span></span>`;
+}
+
+function viewDishIndex() {
+  setTitle('Dishes');
+  main.innerHTML = `
+    <div class="search-row">
+      <input id="filter" type="search" placeholder="Filter by name, ingredient, cooking style…" autocomplete="off">
+      <select id="cat-filter" aria-label="Category"><option value="">All categories</option>${CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('')}</select>
+    </div>
+    <div id="list"></div>`;
+  const filter = document.getElementById('filter');
+  const cat = document.getElementById('cat-filter');
+  const listEl = document.getElementById('list');
+  const draw = () => {
+    const q = norm(filter.value);
+    const items = state.dishes
+      .filter(d => !cat.value || d.category === cat.value)
+      .filter(d => !q || norm([d.name, d.mainIngredient, d.cuisine, d.source, d.course, ...(d.ingredients || [])].join(' ')).includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    listEl.innerHTML = items.length
+      ? `<div class="recipe-grid-list">${items
+          .map(d => {
+            const served = dishHistory(state, d.id).length;
+            const meta = [d.category, d.course].filter(Boolean).map(esc).join(' · ');
+            return `<a class="card link-card recipe-tile" href="#/dish/${d.id}">
+              <div class="recipe-tile-name">${esc(d.name)}</div>
+              ${meta ? `<div class="muted small">${meta}</div>` : ''}
+              ${d.mainIngredient ? `<div class="small">${esc(d.mainIngredient)}</div>` : ''}
+              <div class="recipe-tile-foot">
+                ${starText(d.stars)}
+                ${d.total ? `<span class="muted small">⏱ ${esc(d.total)}</span>` : ''}
+                <span class="muted small">${served ? `served ${plural(served, 'time')}` : 'not served yet'}</span>
+              </div>
+            </a>`;
+          })
+          .join('')}</div>`
+      : `<p class="muted">${state.dishes.length ? 'No dishes match.' : 'No dishes yet. Add them from Settings → Add dishes, or type one into an event’s menu.'}</p>`;
+  };
+  filter.addEventListener('input', draw);
+  cat.addEventListener('change', draw);
+  draw();
+}
+
+function viewDish(id, editing = false) {
   const d = byId(state.dishes, id);
   if (!d) return notFound();
   setTitle(d.name);
   const hist = dishHistory(state, d.id);
+  const val = (label, v) => `<div class="kv"><span class="label">${label}</span> ${v ? esc(v) : '<span class="muted">—</span>'}</div>`;
+  const numbered = (map, n) => (n ? `${n} · ${map[n]}` : '');
+  const paras = t =>
+    t
+      .split(/\n\s*\n/)
+      .map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`)
+      .join('');
+
+  const card = editing
+    ? `<form class="card form recipe recipe-edit" id="dform">
+        <label class="recipe-name-label">Name <input name="name" value="${esc(d.name)}" required></label>
+        <div class="recipe-cols">
+          <div>
+            <label>Main ingredient <input name="mainIngredient" value="${esc(d.mainIngredient)}"></label>
+            ${choiceGroup('Style', 'style', STYLES, d.style)}
+            ${choiceGroup('Complexity', 'complexity', COMPLEXITY, d.complexity)}
+            <div class="row">
+              <label class="grow">Category <select name="category"><option value="">—</option>${CATEGORIES.map(
+                (c, i) => `<option value="${esc(c)}" ${c === d.category ? 'selected' : ''}>${i + 1} = ${esc(c)}</option>`,
+              ).join('')}</select></label>
+              <label class="grow">Course <select name="course"><option value="">—</option>${COURSES.map(
+                c => `<option ${c === d.course ? 'selected' : ''}>${esc(c)}</option>`,
+              ).join('')}</select></label>
+            </div>
+            <div class="row times">
+              <label>Prep <input name="prep" value="${esc(d.prep)}" placeholder="0:10"></label>
+              <label>Cooking <input name="cook" value="${esc(d.cook)}" placeholder="0:20"></label>
+              <label>Total <input name="total" value="${esc(d.total)}" placeholder="0:30"></label>
+            </div>
+            <label>Ingredients <span class="hint">one per line; also used for the allergy check</span>
+              <textarea name="ingredients" rows="13">${esc((d.ingredients || []).join('\n'))}</textarea></label>
+          </div>
+          <div>
+            <label>Instructions <span class="hint">leave a blank line between steps</span>
+              <textarea name="instructions" rows="20">${esc(d.instructions)}</textarea></label>
+          </div>
+        </div>
+        <div class="row">
+          <label class="grow">Cooking style <input name="cuisine" value="${esc(d.cuisine)}" placeholder="e.g. Asian"></label>
+          <label class="grow">Source <input name="source" value="${esc(d.source)}"></label>
+          <label>Stars <select name="stars"><option value="0">—</option>${[0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]
+            .map(n => `<option value="${n}" ${n === d.stars ? 'selected' : ''}>${n}</option>`)
+            .join('')}</select></label>
+        </div>
+        <label>Chef’s notes <textarea name="notes" rows="3">${esc(d.notes)}</textarea></label>
+        <div class="btn-row"><button class="btn primary" type="button" id="done">Done</button><span class="hint">Changes save as you type.</span></div>
+      </form>`
+    : `<article class="card recipe">
+        <div class="recipe-head">
+          <h1 class="recipe-title">${esc(d.name)}</h1>
+          <button class="btn" type="button" id="edit">Edit recipe</button>
+        </div>
+        <div class="recipe-cols">
+          <div>
+            ${val('Main ingredient', d.mainIngredient)}
+            ${val('Style', numbered(STYLES, d.style))}
+            ${val('Complexity', numbered(COMPLEXITY, d.complexity))}
+            ${val('Category', d.category ? `${CATEGORIES.indexOf(d.category) + 1} · ${d.category}` : '')}
+            ${val('Course', d.course)}
+            <div class="times-row">${val('Prep', d.prep)}${val('Cooking', d.cook)}${val('Total', d.total)}</div>
+            <h2 class="recipe-sub">Ingredients</h2>
+            <div class="ingredients-box">${
+              d.ingredients?.length ? `<ul>${d.ingredients.map(i => `<li>${esc(i)}</li>`).join('')}</ul>` : '<p class="muted">None listed yet.</p>'
+            }</div>
+          </div>
+          <div>
+            <h2 class="recipe-sub">Instructions</h2>
+            <div class="instructions">${d.instructions ? paras(d.instructions) : '<p class="muted">None yet.</p>'}</div>
+          </div>
+        </div>
+        <div class="recipe-foot">
+          ${val('Cooking style', d.cuisine)}
+          ${val('Source', d.source)}
+          <div class="kv"><span class="label">Stars</span> ${d.stars ? starText(d.stars) : '<span class="muted">—</span>'}</div>
+        </div>
+        ${d.notes ? `<h2 class="recipe-sub">Chef’s notes</h2><p class="note">${esc(d.notes)}</p>` : ''}
+      </article>`;
+
   main.innerHTML = `
     <p><a href="#/dishes">← All dishes</a></p>
-    <form class="card form" id="dform">
-      <label>Name <input name="name" value="${esc(d.name)}" required></label>
-      <label>Course <select name="course"><option value="">—</option>${COURSES.map(
-        c => `<option ${c === d.course ? 'selected' : ''}>${esc(c)}</option>`,
-      ).join('')}</select></label>
-      <label>Key ingredients <span class="hint">comma-separated; used to flag guests’ allergies and dislikes</span>
-        <input name="ingredients" value="${esc((d.ingredients || []).join(', '))}" placeholder="e.g. mushrooms, cream, walnuts"></label>
-      <label>Notes / recipe source <textarea name="notes" rows="3">${esc(d.notes)}</textarea></label>
-      <p class="hint">Changes save automatically.</p>
-    </form>
+    ${card}
     <h2>${hist.length ? `Served ${plural(hist.length, 'time')}` : 'Not served yet'}</h2>
     ${hist
       .map(
@@ -495,23 +621,58 @@ function viewDish(id) {
     <p class="danger-zone"><button class="btn danger" id="del">Delete dish</button></p>`;
   wireMerge('dish', d);
 
+  document.getElementById('edit')?.addEventListener('click', () => (location.hash = `#/dish/${id}/edit`));
+  document.getElementById('done')?.addEventListener('click', () => {
+    persist.flush();
+    location.hash = `#/dish/${id}`;
+  });
+
   const form = document.getElementById('dform');
   const persist = debounce(() => {
+    if (!form) return;
     const f = new FormData(form);
     const name = String(f.get('name')).trim();
     if (!name) return;
-    save('dishes', { ...d, name, course: String(f.get('course')), ingredients: splitList(f.get('ingredients')), notes: String(f.get('notes')).trim() });
+    const next = normalizeDish({
+      ...byId(state.dishes, id),
+      name,
+      mainIngredient: f.get('mainIngredient'),
+      style: f.get('style'),
+      complexity: f.get('complexity'),
+      category: f.get('category'),
+      course: f.get('course'),
+      prep: f.get('prep'),
+      cook: f.get('cook'),
+      total: f.get('total'),
+      ingredients: String(f.get('ingredients')).split('\n'),
+      instructions: f.get('instructions'),
+      cuisine: f.get('cuisine'),
+      source: f.get('source'),
+      stars: f.get('stars'),
+      notes: f.get('notes'),
+    });
+    save('dishes', next);
     setTitle(name);
   }, 400);
-  form.addEventListener('input', persist);
-  form.addEventListener('change', persist);
-  form.addEventListener('submit', e => e.preventDefault());
+  form?.addEventListener('input', persist);
+  form?.addEventListener('change', persist);
+  form?.addEventListener('submit', e => e.preventDefault());
+
   document.getElementById('del').addEventListener('click', async () => {
     if (!confirm(`Delete ${d.name}? It will also be removed from ${plural(hist.length, 'menu')}.`)) return;
     for (const h of hist) await save('events', { ...h.event, dishes: h.event.dishes.filter(x => x.dishId !== d.id) });
     await removeRecord('dishes', d.id);
     location.hash = '#/dishes';
   });
+}
+
+// Numbered choices like the printed card ("1 = Plain, 2 = Day to day, 3 = Elegant").
+function choiceGroup(legend, name, map, value) {
+  return `<fieldset class="choices"><legend>${legend}</legend>${Object.entries(map)
+    .map(
+      ([n, label]) => `<label class="choice"><input type="radio" name="${name}" value="${n}" ${Number(n) === value ? 'checked' : ''}><span>${n} = ${esc(label)}</span></label>`,
+    )
+    .join('')}</fieldset>`;
 }
 
 // ----- merging duplicates -----
@@ -568,7 +729,7 @@ function wireMerge(kind, rec) {
 function viewImport() {
   setTitle('Add many dishes');
   main.innerHTML = `
-    <p><a href="#/dishes">← All dishes</a></p>
+    <p><a href="#/settings">← Settings</a></p>
     <h2>Add many dishes at once</h2>
     <div class="card form">
       <p>Put one dish per line. Page numbers, dotted leaders and bullets are removed. Headings such as “Starters” or “Desserts” set the course for the dishes below them.</p>
@@ -888,6 +1049,26 @@ function viewBackup() {
     last = localStorage.getItem('lastBackup');
   } catch {}
   main.innerHTML = `
+    <h2>Add dishes</h2>
+    <div class="card form">
+      <div class="row">
+        <label class="grow">One dish <input id="one-dish" placeholder="Dish name" autocomplete="off"></label>
+        <button class="btn primary" type="button" id="one-dish-add">Add and open</button>
+      </div>
+      <div class="add-ways">
+        <div>
+          <strong>Many at once</strong>
+          <p class="hint">Paste recipe titles from your cookbook file, or use Scan Text on a contents page.</p>
+          <a class="btn" href="#/import">Add many at once</a>
+        </div>
+        <div>
+          <strong>Recipe file</strong>
+          <p class="hint">Load a recipe file made from your scanned recipe pages. You’ll see the list before anything is saved.</p>
+          <label class="btn file-btn">Choose recipe file<input type="file" id="recipe-file" accept="application/json,.json"></label>
+        </div>
+      </div>
+      <div id="recipe-review"></div>
+    </div>
     <h2>Your data</h2>
     <div class="card">
       <p>${plural(state.events.length, 'event')}, ${plural(state.guests.length, 'guest')}, ${plural(state.dishes.length, 'dish')}.</p>
@@ -904,6 +1085,69 @@ function viewBackup() {
       <p>Restoring <strong>replaces</strong> everything in the app with the contents of the backup file.</p>
       <input type="file" id="import" accept="application/json,.json">
     </div>`;
+
+  const oneDish = document.getElementById('one-dish');
+  const addOne = async () => {
+    const name = oneDish.value.trim();
+    if (!name) return oneDish.focus();
+    const existing = findByName(state.dishes, name);
+    const d = existing || (await createDish(name));
+    location.hash = existing ? `#/dish/${d.id}` : `#/dish/${d.id}/edit`;
+  };
+  document.getElementById('one-dish-add').addEventListener('click', addOne);
+  oneDish.addEventListener('keydown', e => e.key === 'Enter' && addOne());
+
+  document.getElementById('recipe-file').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const review = document.getElementById('recipe-review');
+    let plan;
+    try {
+      plan = planRecipeImport(state, JSON.parse(await file.text()));
+    } catch (err) {
+      review.innerHTML = `<p class="notice">Couldn’t read that file: ${esc(err.message)}</p>`;
+      return;
+    }
+    review.innerHTML = `
+      <h3 class="recipe-sub">Check the recipes</h3>
+      <p class="hint">Recipes already in the app are updated with the card’s details; their history is kept.</p>
+      <ul class="import-list">${plan
+        .map(
+          ({ recipe, existing }, i) => `<li>
+            <input type="checkbox" id="rf-${i}" checked aria-label="Include">
+            <span class="grow"><strong>${esc(recipe.name)}</strong>
+              <span class="muted small">${[recipe.category, recipe.cuisine].filter(Boolean).map(esc).join(' · ')}</span></span>
+            ${recipe.stars ? starText(recipe.stars) : ''}
+            <span class="tag ${existing ? 'exists' : 'planned'}">${existing ? 'Updates existing' : 'New'}</span>
+          </li>`,
+        )
+        .join('')}</ul>
+      <p class="btn-row spaced"><button class="btn primary" type="button" id="rf-save">Load ${plural(plan.length, 'recipe')}</button></p>`;
+    const btn = document.getElementById('rf-save');
+    review.addEventListener('change', () => {
+      const n = plan.filter((_, i) => document.getElementById(`rf-${i}`).checked).length;
+      btn.textContent = `Load ${plural(n, 'recipe')}`;
+      btn.disabled = !n;
+    });
+    btn.addEventListener('click', async () => {
+      let added = 0;
+      let updated = 0;
+      for (const [i, { recipe }] of plan.entries()) {
+        if (!document.getElementById(`rf-${i}`).checked) continue;
+        const existing = findByName(state.dishes, recipe.name); // re-check: the file may repeat a name
+        if (existing) {
+          await save('dishes', applyRecipe(existing, recipe));
+          updated++;
+        } else {
+          await save('dishes', recipe);
+          added++;
+        }
+      }
+      toast(`Loaded: ${added} new, ${updated} updated`);
+      location.hash = '#/dishes';
+    });
+  });
 
   navigator.storage?.persisted?.().then(p => {
     document.getElementById('persist').textContent = p
@@ -951,10 +1195,10 @@ function notFound() {
 // ---------- router ----------
 
 function route() {
-  const [, page, id] = location.hash.replace(/^#/, '').split('/');
+  const [, page, id, sub] = location.hash.replace(/^#/, '').split('/');
   document.querySelectorAll('nav a').forEach(a => {
     const target = a.getAttribute('href').split('/')[1];
-    const map = { guest: 'guests', dish: 'dishes', event: 'events', import: 'dishes', backup: 'settings' };
+    const map = { guest: 'guests', dish: 'dishes', event: 'events', import: 'settings', backup: 'settings' };
     a.classList.toggle('active', target === (map[page] || page || ''));
   });
   window.scrollTo(0, 0);
@@ -962,14 +1206,15 @@ function route() {
   switch (page) {
     case 'events':
     case 'guests':
-    case 'dishes':
       return viewList(page);
+    case 'dishes':
+      return viewDishIndex();
     case 'event':
       return viewEvent(id);
     case 'guest':
       return viewGuest(id);
     case 'dish':
-      return viewDish(id);
+      return viewDish(id, sub === 'edit');
     case 'settings':
     case 'backup':
       return viewBackup();
@@ -983,6 +1228,7 @@ function route() {
 async function start() {
   try {
     state = { ...emptyState(), ...(await db.loadAll()) };
+    state.dishes = state.dishes.map(normalizeDish);
   } catch (err) {
     main.innerHTML = `<p>Could not open storage: ${esc(err.message)}. Private Browsing mode may block it.</p>`;
     return;
