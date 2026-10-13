@@ -290,6 +290,14 @@ ul.plain li:last-child { border-bottom: 0; }
 .warn-allergy { background: var(--allergy-bg); color: var(--allergy-ink); }
 .warn-dislike { background: var(--dislike-bg); color: var(--dislike-ink); }
 .warn-served { background: var(--served-bg); color: var(--served-ink); }
+.warn-fav { background: var(--accent-soft); color: var(--accent); }
+.fav-btn { color: var(--accent); }
+.fav-btn.on { background: var(--accent-soft); }
+.fav-badge { background: var(--accent-soft); color: var(--accent); border-radius: 10px; padding: 6px 10px; font-size: 14px; font-weight: 600; }
+.index-table .fav-badge { margin-bottom: 4px; white-space: nowrap; }
+.fav-title { margin-top: 0; }
+.fav-list li { display: flex; align-items: center; gap: 6px; }
+.fav-list li .grow { flex: 1; }
 .checks li a { color: inherit; text-decoration: underline; }
 
 /* ---------- merge & import ---------- */

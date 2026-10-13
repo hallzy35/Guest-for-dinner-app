@@ -1,7 +1,7 @@
 import * as db from './db.js';
 import {
   CATEGORIES, COMPLEXITY, COURSES, INDEX_MODES, RECEPTION, STYLES, buildIndex, dishSuitability, shoppingList, shoppingText, applyRecipe, autocheck, emptyDish, normalizeDish, planRecipeImport, buildICS, byId, dishHistory, emptyState, findByName, googleCalendarUrl, guestHistory,
-  mergeDishes, mergeGuests, newId, norm, parseDishList, search, sortEventsDesc, splitList, suggest, validateBackup,
+  isFavorite, mergeDishes, mergeGuests, newId, servedEvents, setFavorite, norm, parseDishList, search, sortEventsDesc, splitList, suggest, validateBackup,
 } from './logic.js';
 
 const APP_NAME = 'From My Table';
@@ -36,6 +36,10 @@ const plannedTag = e => (isPlanned(e) ? ' <span class="tag planned">Planned</spa
 const eventLabel = e => `${fmtDate(e.date)}${e.title ? ' · ' + esc(e.title) : ''}${plannedTag(e)}`;
 // Most recent event that has actually happened (planned dinners don't count as a visit yet).
 const lastPast = events => events.find(e => !isPlanned(e));
+const lastHad = events => {
+  const last = lastPast(events);
+  return last ? `last had ${fmtDate(last.date)}` : 'not served to them yet';
+};
 function visitSummary(events) {
   const past = events.filter(e => !isPlanned(e));
   const planned = events.length - past.length;
@@ -428,6 +432,12 @@ function viewGuest(id) {
       <label>Notes <textarea name="notes" rows="3" placeholder="Partner, kids, dietary, seating…">${esc(g.notes)}</textarea></label>
       <p class="hint">Changes save automatically.</p>
     </form>
+    <div class="card">
+      <h2 class="card-title fav-title">♥ Favourite dishes</h2>
+      <div id="fav-list"></div>
+      <div class="ac-wrap"><input id="fav-in" placeholder="Add a favourite dish…" autocomplete="off"></div>
+      <p class="hint">Favourites aren’t flagged as repeats — they’re suggested first when you plan a dinner for ${esc(g.name)}.</p>
+    </div>
     <h2>${hist.length ? `Visits (${hist.length})` : 'No visits yet'}</h2>
     ${hist
       .map(
@@ -451,7 +461,7 @@ function viewGuest(id) {
     const name = String(f.get('name')).trim();
     if (!name) return;
     save('guests', {
-      ...g,
+      ...byId(state.guests, g.id),
       name,
       drinks: String(f.get('drinks')).trim(),
       likes: String(f.get('likes')).trim(),
@@ -463,6 +473,38 @@ function viewGuest(id) {
   }, 400);
   form.addEventListener('input', persist);
   form.addEventListener('submit', e => e.preventDefault());
+
+  const favList = document.getElementById('fav-list');
+  const setFavs = async favorites => {
+    persist.flush();
+    const cur = byId(state.guests, g.id);
+    await save('guests', { ...cur, favorites });
+    drawFavs();
+  };
+  const drawFavs = () => {
+    const favs = byId(state.guests, g.id).favorites || [];
+    favList.innerHTML = favs.length
+      ? `<ul class="plain fav-list">${favs
+          .map(
+            id => `<li><span class="grow"><a href="#/dish/${id}">${esc(dishName(id))}</a> <span class="muted small">· ${lastHad(servedEvents(state, g.id, id))}</span></span>
+              <button type="button" class="icon-btn" data-rm-fav="${id}" aria-label="Remove ${esc(dishName(id))} from favourites">×</button></li>`,
+          )
+          .join('')}</ul>`
+      : '<p class="muted">None yet.</p>';
+  };
+  favList.addEventListener('click', e => {
+    const b = e.target.closest('[data-rm-fav]');
+    if (b) setFavs((byId(state.guests, g.id).favorites || []).filter(x => x !== b.dataset.rmFav));
+  });
+  autocomplete(document.getElementById('fav-in'), {
+    list: () => state.dishes,
+    exclude: () => byId(state.guests, g.id).favorites || [],
+    allowCreate: false,
+    describe: d => esc(d.course || ''),
+    onPick: d => setFavs([...(byId(state.guests, g.id).favorites || []), d.id]),
+  });
+  drawFavs();
+
   document.getElementById('del').addEventListener('click', async () => {
     if (!confirm(`Delete ${g.name}? They will also be removed from ${plural(hist.length, 'event')}.`)) return;
     for (const e of hist) await save('events', { ...e, guestIds: e.guestIds.filter(x => x !== g.id) });
@@ -501,17 +543,18 @@ function viewDishIndex(planEventId) {
       ? state.dishes
       : state.dishes.filter(d => {
           const x = suit.get(d.id);
+          if (x.favOf.length) return false; // shown in their own group above
           if (s.hideServed && x.servedTo.length) return false;
           if (s.hideClash && x.conflicts.length) return false;
           return true;
         });
-  const hiddenServed = plan ? state.dishes.filter(d => suit.get(d.id).servedTo.length).length : 0;
+  const hiddenServed = plan ? state.dishes.filter(d => suit.get(d.id).servedTo.length && !suit.get(d.id).favOf.length).length : 0;
   const hiddenClash = plan ? state.dishes.filter(d => suit.get(d.id).conflicts.length).length : 0;
   const planBanner = plan
     ? `<p><a href="#/event/${plan.id}">← Back to ${eventLabel(plan)}</a></p>
       <div class="card plan-banner">
         <div class="card-title">Choosing dishes for ${esc(plan.guestIds.map(guestName).join(', ') || 'this event')}</div>
-        <label class="check"><input type="checkbox" id="hide-served" ${s.hideServed ? 'checked' : ''}> Hide dishes any of them has had before <span class="muted">(${hiddenServed})</span></label>
+        <label class="check"><input type="checkbox" id="hide-served" ${s.hideServed ? 'checked' : ''}> Hide dishes any of them has had before (except favourites) <span class="muted">(${hiddenServed})</span></label>
         <label class="check"><input type="checkbox" id="hide-clash" ${s.hideClash ? 'checked' : ''}> Hide dishes that clash with an allergy or dislike <span class="muted">(${hiddenClash})</span></label>
         <p class="hint">Tap “Add” to put a dish on the menu. ${plural(plan.dishes.length, 'dish')} on the menu so far.</p>
       </div>`
@@ -551,21 +594,53 @@ function viewDishIndex(planEventId) {
   };
   const listEl = document.getElementById('list');
 
+  // Guests' favourites come first, even if they've had them before — longest since last had at the top.
+  const lastDate = d => {
+    const dates = suit.get(d.id).favOf.map(f => lastPast(f.events)?.date || '');
+    return dates.sort()[0] ?? '';
+  };
+  const favDishes = () =>
+    !plan
+      ? []
+      : buildIndex(
+          state.dishes.filter(d => {
+            const x = suit.get(d.id);
+            return x.favOf.length && !(s.hideClash && x.conflicts.length);
+          }),
+          'az',
+          s.f,
+        )
+          .flatMap(g => g.items)
+          .sort((a, b) => lastDate(a).localeCompare(lastDate(b)));
+  const favBadge = d =>
+    `<div class="fav-badge">${suit
+      .get(d.id)
+      .favOf.map(f => `♥ ${esc(f.guest.name)}’s favourite · ${lastHad(f.events)}`)
+      .join('<br>')}</div>`;
+
   const draw = () => {
     const groups = buildIndex(planDishes(), s.mode, s.f);
-    const total = groups.reduce((n, g) => n + g.items.length, 0);
+    const favs = favDishes();
+    const total = groups.reduce((n, g) => n + g.items.length, 0) + favs.length;
     if (!total) {
       listEl.innerHTML = `<p class="muted">${state.dishes.length ? (plan ? 'No dishes match. Try untoggling a “Hide” option above.' : 'No dishes match.') : 'No dishes yet. Add them from Settings → Add dishes, or type one into an event’s menu.'}</p>`;
       return;
     }
     const count = `<p class="muted small index-count">${plural(total, 'recipe')}</p>`;
+    const addBtn = d =>
+      plan ? `<button type="button" class="btn ${onMenu(d.id) ? '' : 'primary'} add-btn" data-add="${d.id}" ${onMenu(d.id) ? 'disabled' : ''}>${onMenu(d.id) ? 'On menu ✓' : 'Add'}</button>` : '';
+    const favSection = favs.length
+      ? `<h2 class="index-heading">♥ Favourites of these guests <span class="muted small">${favs.length}</span></h2>
+        ${s.view === 'list'
+          ? indexTable(favs, d => favBadge(d) + addBtn(d))
+          : `<div class="recipe-grid-list">${favs.map(d => `<div class="plan-tile">${dishTile(d)}${favBadge(d)}${addBtn(d)}</div>`).join('')}</div>`}`
+      : '';
     listEl.innerHTML =
       count +
+      favSection +
       groups
         .map(g => {
           const head = g.heading ? `<h2 class="index-heading">${esc(s.mode === 'cuisine' ? g.heading : CATEGORY_HEADINGS[g.heading] || g.heading)} <span class="muted small">${g.items.length}</span></h2>` : '';
-          const addBtn = d =>
-            plan ? `<button type="button" class="btn ${onMenu(d.id) ? '' : 'primary'} add-btn" data-add="${d.id}" ${onMenu(d.id) ? 'disabled' : ''}>${onMenu(d.id) ? 'On menu ✓' : 'Add'}</button>` : '';
           return (
             head +
             (s.view === 'list'
@@ -825,6 +900,7 @@ function viewDish(id, editing = false) {
   document.getElementById('del').addEventListener('click', async () => {
     if (!confirm(`Delete ${d.name}? It will also be removed from ${plural(hist.length, 'menu')}.`)) return;
     for (const h of hist) await save('events', { ...h.event, dishes: h.event.dishes.filter(x => x.dishId !== d.id) });
+    for (const g of setFavorite(state.guests, d.id, false)) await save('guests', g);
     await removeRecord('dishes', d.id);
     location.hash = '#/dishes';
   });
@@ -956,6 +1032,7 @@ function wireMerge(kind, rec) {
           const r = kind === 'guest' ? mergeGuests(state, keepId, dropId) : mergeDishes(state, keepId, dropId);
           await save(store, r.guest || r.dish);
           for (const e of r.events) await save('events', e);
+          for (const g of r.guests || []) await save('guests', g);
           await removeRecord(store, dropId);
           toast('Merged');
           if (location.hash === `#/${kind}/${keepId}`) route();
@@ -1208,6 +1285,15 @@ function viewEvent(id) {
         draw();
       }),
     );
+    main.querySelectorAll('[data-fav]').forEach(b =>
+      b.addEventListener('click', async () => {
+        const guests = eventGuests();
+        const on = !guests.every(g => isFavorite(g, b.dataset.fav));
+        for (const g of setFavorite(guests, b.dataset.fav, on)) await save('guests', g);
+        toast(on ? `♥ Saved as a favourite of ${guests.map(g => g.name).join(', ')}` : 'Removed from favourites');
+        draw();
+      }),
+    );
     main.querySelectorAll('[data-reception]').forEach(sel =>
       sel.addEventListener('change', () => {
         ev.dishes.find(x => x.dishId === sel.dataset.reception).reception = sel.value;
@@ -1242,8 +1328,22 @@ function viewEvent(id) {
       <div class="card-title"><a href="#/guest/${g.id}">${esc(g.name)}</a></div>
       <div class="tags">${prefTags(g) || '<span class="muted">No preferences recorded — <a href="#/guest/' + g.id + '">add some</a></span>'}</div>
       ${g.notes ? `<div class="note">${esc(g.notes)}</div>` : ''}
+      ${(g.favorites || []).length ? `<div class="small"><span class="label">♥ Favourites</span> ${g.favorites.map(id => `<a href="#/dish/${id}">${esc(dishName(id))}</a>`).join(', ')}</div>` : ''}
       <div class="muted small">${last ? `${plural(visits, 'previous visit')}. Last: ${fmtDate(last.date)} — ${sortedMenu(last).map(d => esc(dishName(d.dishId))).join(', ') || 'no menu recorded'}` : 'First visit'}</div>
     </div>`;
+  }
+
+  // ♥ is "on" only when every guest at this event has the dish as a favourite.
+  function eventGuests() {
+    return ev.guestIds.map(id => byId(state.guests, id)).filter(Boolean);
+  }
+  function favButton(dishId) {
+    const guests = eventGuests();
+    if (!guests.length) return '';
+    const on = guests.every(g => isFavorite(g, dishId));
+    const who = guests.length === 1 ? guests[0].name : 'everyone here';
+    return `<button type="button" class="icon-btn fav-btn ${on ? 'on' : ''}" data-fav="${dishId}" aria-pressed="${on}"
+      aria-label="${on ? 'Remove from' : 'Mark as'} ${esc(who)}’s favourite" title="${on ? 'Favourite' : 'Mark as favourite'}">${on ? '♥' : '♡'}</button>`;
   }
 
   function menuRow(entry) {
@@ -1258,6 +1358,7 @@ function viewEvent(id) {
         <option value="">How did it go?</option>
         ${Object.entries(RECEPTION).map(([k, v]) => `<option value="${k}" ${entry.reception === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}
       </select>
+      ${favButton(entry.dishId)}
       <button class="icon-btn" data-rm-dish="${entry.dishId}" aria-label="Remove dish">×</button>
     </div>`;
   }
@@ -1273,7 +1374,10 @@ function checkPanel({ served, conflicts }) {
       <strong>${c.kind === 'allergy' ? '⚠︎ Allergy' : '✗ Dislike'}:</strong>
       ${esc(c.guest.name)} — ${esc(c.term)} · <em>${esc(c.dish.name)}</em></li>`);
   }
-  for (const s of served) {
+  for (const s of served.filter(x => x.favorite)) {
+    items.push(`<li class="warn-fav"><strong>♥ ${esc(s.guest.name)}’s favourite:</strong> <em>${esc(s.dish.name)}</em> · ${lastHad(s.events)}</li>`);
+  }
+  for (const s of served.filter(x => !x.favorite)) {
     const when = s.events
       .map(e => {
         const entry = e.dishes.find(d => d.dishId === s.dish.id);

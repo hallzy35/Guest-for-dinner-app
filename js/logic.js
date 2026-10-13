@@ -152,11 +152,29 @@ export function autocheck(state, draft) {
       const past = state.events.filter(
         e => e.id !== draft.id && e.guestIds.includes(guest.id) && e.dishes.some(d => d.dishId === dish.id),
       );
-      if (past.length) served.push({ guest, dish, events: sortEventsDesc(past) });
+      const favorite = isFavorite(guest, dish.id);
+      if (past.length || favorite) served.push({ guest, dish, events: sortEventsDesc(past), favorite });
       for (const c of dishConflicts(guest, dish)) conflicts.push({ guest, dish, ...c });
     }
   }
   return { served, conflicts };
+}
+
+export const isFavorite = (guest, dishId) => (guest.favorites || []).includes(dishId);
+
+// Events (newest first, excluding one event) where this guest was served this dish.
+export function servedEvents(state, guestId, dishId, excludeEventId) {
+  return sortEventsDesc(
+    state.events.filter(e => e.id !== excludeEventId && e.guestIds.includes(guestId) && e.dishes.some(d => d.dishId === dishId)),
+  );
+}
+
+// Turn a dish into a favourite of every listed guest, or remove it from all of them.
+// Returns only the guests that changed.
+export function setFavorite(guests, dishId, on) {
+  return guests
+    .filter(g => isFavorite(g, dishId) !== on)
+    .map(g => ({ ...g, favorites: on ? [...(g.favorites || []), dishId] : (g.favorites || []).filter(id => id !== dishId) }));
 }
 
 // Global search across guests, dishes, and event notes/beverages.
@@ -203,7 +221,7 @@ export function validateBackup(data) {
     for (const r of data[k]) if (!r || typeof r.id !== 'string') throw new Error(`A record in "${k}" has no id.`);
   }
   return {
-    guests: data.guests.map(g => ({ drinks: '', likes: '', notes: '', dislikes: [], allergies: [], ...g })),
+    guests: data.guests.map(g => ({ drinks: '', likes: '', notes: '', dislikes: [], allergies: [], favorites: [], ...g })),
     dishes: data.dishes.map(normalizeDish),
     events: data.events.map(e => ({
       title: '', time: '', beverages: '', worked: '', didnt: '', notes: '', guestIds: [], dishes: [], ...e,
@@ -240,6 +258,7 @@ export function mergeGuests(state, keepId, dropId) {
     notes: joinText(keep.notes, drop.notes, '\n'),
     allergies: unionList(keep.allergies, drop.allergies),
     dislikes: unionList(keep.dislikes, drop.dislikes),
+    favorites: [...new Set([...(keep.favorites || []), ...(drop.favorites || [])])],
   };
   const events = state.events
     .filter(e => e.guestIds.includes(dropId))
@@ -268,7 +287,10 @@ export function mergeDishes(state, keepId, dropId) {
       const merged = { ...kept, reception: kept.reception || dropped.reception, note: joinText(kept.note, dropped.note, '; ') };
       return { ...e, dishes: e.dishes.filter(d => d.dishId !== dropId).map(d => (d.dishId === keepId ? merged : d)) };
     });
-  return { dish, events };
+  const guests = state.guests
+    .filter(g => isFavorite(g, dropId))
+    .map(g => ({ ...g, favorites: [...new Set((g.favorites || []).map(id => (id === dropId ? keepId : id)))] }));
+  return { dish, events, guests };
 }
 
 // ---------- bulk dish import ----------
@@ -565,7 +587,10 @@ export function dishSuitability(state, event) {
   for (const dish of state.dishes) {
     const servedTo = guests.filter(g => past.some(e => e.guestIds.includes(g.id) && e.dishes.some(d => d.dishId === dish.id)));
     const conflicts = guests.flatMap(g => dishConflicts(g, dish).map(c => ({ guest: g, ...c })));
-    out.set(dish.id, { servedTo, conflicts });
+    const favOf = guests
+      .filter(g => isFavorite(g, dish.id))
+      .map(g => ({ guest: g, events: servedEvents(state, g.id, dish.id, event.id) }));
+    out.set(dish.id, { servedTo, conflicts, favOf });
   }
   return out;
 }
