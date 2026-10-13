@@ -1,6 +1,6 @@
 // Offline support: serve the app shell from cache, refresh it in the background.
 // Bump VERSION whenever app files change so iPads pick up the new version.
-const VERSION = 'v3';
+const VERSION = 'v4';
 const CACHE = `from-my-table-${VERSION}`;
 const SHELL = [
   './',

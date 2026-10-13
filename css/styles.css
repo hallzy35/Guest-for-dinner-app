@@ -2,12 +2,12 @@
    One colour, one meaning: status colours (allergy, dislike, served, loved) are never decoration.
    Every text/background pair meets Apple's preferred 7:1 contrast in both themes. */
 :root {
-  --bg: #fcf9f6;
-  --surface: #ffffff;
-  --field: #f6f0eb;
+  --bg: #efe6e0;
+  --surface: #f9f4f0;
+  --field: #e9dfd8;
   --ink: #241a22;
-  --muted: #5b4a56;
-  --line: #ecdfe6;
+  --muted: #4b3c47;
+  --line: #ddcfd6;
   --accent: #6e2a5e;
   --accent-hover: #561f49;
   --accent-ink: #ffffff;
