@@ -1,15 +1,28 @@
 {
-  "name": "Hostess Diary",
-  "short_name": "Hostess Diary",
-  "description": "Record who came to dinner, what you served, and their preferences.",
+  "name": "From My Table",
+  "short_name": "From My Table",
+  "description": "Who came to dinner, what you served, and what they love (or won’t eat).",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#faf7f2",
-  "theme_color": "#7a2e3a",
+  "background_color": "#f5f8f7",
+  "theme_color": "#0b7a75",
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

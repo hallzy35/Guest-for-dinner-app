@@ -1,6 +1,6 @@
-# Hostess Diary
+# From My Table
 
-An iPad-friendly hostess diary: record who came to dinner, what you served, what they drank, and how it went — then find it all again in seconds.
+An iPad app for people who cook for friends and family: record who came to dinner, what you served, what they drank, and how it went — then find it all again in seconds.
 
 ## What it does
 
@@ -16,6 +16,10 @@ An iPad-friendly hostess diary: record who came to dinner, what you served, what
 
   The allergy/dislike check is simple word matching, not a food-safety system: it only knows the ingredients you list.
 - **Guest briefing.** Adding a guest to an event shows their preferences and what you served them last time.
+- **Merge duplicates.** On any guest or dish page, combine it with a duplicate (e.g. “Jim” and “James Smith”) and choose which name to keep. All history, preferences, ingredients and notes are kept.
+- **Add many dishes at once.** Dishes → *Add many at once*: paste recipe titles from your cookbook file, use the iPad’s *Scan Text* on a printed page, or copy text from a photo. Page numbers and dot leaders are removed, and headings like “Desserts” set the course. You review the list before anything is saved.
+- **Add to Calendar.** Each event (with an optional start time) can be added to the iPad’s calendar or Google Calendar, with the guest list, menu and allergies in the notes. The Events tab can add all upcoming events at once.
+- **Light and dark mode.** Follows the iPad’s setting by default; the button at the top right switches between Auto, Light and Dark.
 - **Works offline** and installs to the Home Screen.
 
 ## Where the data lives

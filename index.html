@@ -3,20 +3,28 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Hostess Diary</title>
-  <meta name="theme-color" content="#7a2e3a">
+  <title>From My Table</title>
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#142125" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Hostess Diary">
+  <meta name="apple-mobile-web-app-title" content="From My Table">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="icon" href="icons/icon-192.png">
+  <script>
+    // Apply the saved theme before first paint so there is no flash.
+    try {
+      const t = localStorage.getItem('theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch {}
+  </script>
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
   <header>
-    <a class="brand" href="#/">Hostess Diary</a>
+    <a class="brand" href="#/">From My Table</a>
     <nav>
       <a href="#/">Search</a>
       <a href="#/events">Events</a>
@@ -24,6 +32,7 @@
       <a href="#/dishes">Dishes</a>
       <a href="#/backup">Backup</a>
     </nav>
+    <button class="theme-btn" id="theme-btn" type="button" aria-label="Change appearance">Auto</button>
   </header>
   <main id="main"><p class="muted">Loading…</p></main>
   <div id="toast" role="status" aria-live="polite"></div>

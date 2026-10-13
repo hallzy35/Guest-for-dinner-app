@@ -179,7 +179,221 @@ export function validateBackup(data) {
     guests: data.guests.map(g => ({ drinks: '', likes: '', notes: '', dislikes: [], allergies: [], ...g })),
     dishes: data.dishes.map(d => ({ course: '', notes: '', ingredients: [], ...d })),
     events: data.events.map(e => ({
-      title: '', beverages: '', worked: '', didnt: '', notes: '', guestIds: [], dishes: [], ...e,
+      title: '', time: '', beverages: '', worked: '', didnt: '', notes: '', guestIds: [], dishes: [], ...e,
     })),
   };
+}
+
+// ---------- merging duplicates ----------
+
+function unionList(a = [], b = []) {
+  const out = [...a];
+  for (const x of b) if (!out.some(y => norm(y) === norm(x))) out.push(x);
+  return out;
+}
+
+function joinText(a = '', b = '', sep) {
+  a = a.trim();
+  b = b.trim();
+  if (!b || norm(a) === norm(b) || norm(a).includes(norm(b))) return a;
+  if (!a || norm(b).includes(norm(a))) return b;
+  return `${a}${sep}${b}`;
+}
+
+// Folds `drop` into `keep`. Returns the merged record plus every event that changed;
+// the caller saves those and deletes `drop`. Nothing is lost: lists are unioned, text is joined.
+export function mergeGuests(state, keepId, dropId) {
+  const keep = byId(state.guests, keepId);
+  const drop = byId(state.guests, dropId);
+  if (!keep || !drop || keepId === dropId) throw new Error('Pick two different guests.');
+  const guest = {
+    ...keep,
+    drinks: joinText(keep.drinks, drop.drinks, ', '),
+    likes: joinText(keep.likes, drop.likes, ', '),
+    notes: joinText(keep.notes, drop.notes, '\n'),
+    allergies: unionList(keep.allergies, drop.allergies),
+    dislikes: unionList(keep.dislikes, drop.dislikes),
+  };
+  const events = state.events
+    .filter(e => e.guestIds.includes(dropId))
+    .map(e => ({ ...e, guestIds: [...new Set(e.guestIds.map(id => (id === dropId ? keepId : id)))] }));
+  return { guest, events };
+}
+
+export function mergeDishes(state, keepId, dropId) {
+  const keep = byId(state.dishes, keepId);
+  const drop = byId(state.dishes, dropId);
+  if (!keep || !drop || keepId === dropId) throw new Error('Pick two different dishes.');
+  const dish = {
+    ...keep,
+    course: keep.course || drop.course,
+    ingredients: unionList(keep.ingredients, drop.ingredients),
+    notes: joinText(keep.notes, drop.notes, '\n'),
+  };
+  const events = state.events
+    .filter(e => e.dishes.some(d => d.dishId === dropId))
+    .map(e => {
+      const kept = e.dishes.find(d => d.dishId === keepId);
+      const dropped = e.dishes.find(d => d.dishId === dropId);
+      if (!kept) return { ...e, dishes: e.dishes.map(d => (d.dishId === dropId ? { ...d, dishId: keepId } : d)) };
+      // Both were on the same menu: keep one entry, preserving any reception and notes.
+      const merged = { ...kept, reception: kept.reception || dropped.reception, note: joinText(kept.note, dropped.note, '; ') };
+      return { ...e, dishes: e.dishes.filter(d => d.dishId !== dropId).map(d => (d.dishId === keepId ? merged : d)) };
+    });
+  return { dish, events };
+}
+
+// ---------- bulk dish import ----------
+
+const COURSE_HEADINGS = [
+  ['Cocktail / appetizer', ['appetizer', 'appetiser', 'canape', 'hors d oeuvre', 'nibble', 'small bite', 'cocktail', 'starter appetizer', 'starter and appetizer']],
+  ['Starter', ['starter', 'first course']],
+  ['Soup', ['soup']],
+  ['Salad', ['salad']],
+  ['Main', ['main', 'main course', 'entree', 'main and entree', 'meat', 'fish', 'poultry', 'seafood']],
+  ['Side', ['side', 'side dish', 'vegetable', 'accompaniment', 'side and vegetable', 'side vegetable']],
+  ['Cheese', ['cheese', 'cheese course']],
+  ['Dessert', ['dessert', 'pudding', 'sweet', 'afters']],
+];
+
+// A line is a course heading only if it is exactly a heading word or its plural ("Desserts", "Side dishes").
+export function courseForHeading(line) {
+  const words = norm(line).split(' ');
+  const same = (a, b) => a === b || a === b + 's' || a === b + 'es';
+  for (const [course, headings] of COURSE_HEADINGS) {
+    for (const h of headings) {
+      const hw = h.split(' ');
+      if (hw.length === words.length && hw.every((w, i) => same(words[i], w))) return course;
+    }
+  }
+  return '';
+}
+
+// Turns pasted or scanned text (a contents page, a list of recipe titles) into dish names.
+// Drops page numbers, dot leaders and bullets; course headings set the course of the lines after them.
+export function parseDishList(text, defaultCourse = '') {
+  const out = [];
+  const seen = new Set();
+  let course = defaultCourse;
+  for (const raw of String(text ?? '').split(/\r?\n/)) {
+    let line = raw
+      .replace(/^\s*(?:[-•*·–—▪◦]|\d+[.)]|[a-z][.)])\s+/i, '') // bullets, "1." numbering
+      .replace(/[\s.·…_-]*\b(?:p\.?\s*)?\d{1,4}\s*$/i, '') // trailing page number with dot leaders
+      .replace(/^\d{1,4}\s+(?=\D)/, '') // leading page number
+      .replace(/\s{2,}/g, ' ')
+      .replace(/[\s,;:–—-]+$/, '')
+      .trim();
+    if (!line || !/[a-z]/i.test(line)) continue;
+    if (/^(contents|index|table of contents|recipes?)$/i.test(line)) continue;
+    const heading = courseForHeading(line);
+    if (heading) {
+      course = heading;
+      continue;
+    }
+    // Title-case ALL-CAPS titles so they read naturally.
+    if (line === line.toUpperCase() && /[A-Z]{3}/.test(line)) {
+      line = line.toLowerCase().replace(/(^|[\s(&/-])([a-z])/g, (m, p, c) => p + c.toUpperCase());
+    }
+    const key = norm(line);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ name: line, course });
+  }
+  return out;
+}
+
+// ---------- calendar ----------
+
+function icsEscape(s) {
+  return String(s ?? '').replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+}
+
+// RFC 5545 lines are folded at 75 octets.
+function icsFold(line) {
+  const bytes = new TextEncoder().encode(line);
+  if (bytes.length <= 75) return line;
+  const parts = [];
+  let cur = '';
+  let len = 0;
+  for (const ch of line) {
+    const l = new TextEncoder().encode(ch).length;
+    if (len + l > (parts.length ? 74 : 75)) {
+      parts.push(cur);
+      cur = '';
+      len = 0;
+    }
+    cur += ch;
+    len += l;
+  }
+  parts.push(cur);
+  return parts.join('\r\n ');
+}
+
+const compactDate = iso => iso.replace(/-/g, '');
+
+function addDays(iso, n) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + n));
+  return dt.toISOString().slice(0, 10);
+}
+
+// Start/end in calendar format. Timed events are "floating" local time, so they land at the
+// same clock time in whatever time zone the calendar is in.
+export function eventTimes(ev, hours = 3) {
+  if (!ev.time) return { allDay: true, start: compactDate(ev.date), end: compactDate(addDays(ev.date, 1)) };
+  const [h, min] = ev.time.split(':').map(Number);
+  const [y, m, d] = ev.date.split('-').map(Number);
+  const s = new Date(Date.UTC(y, m - 1, d, h, min));
+  const e = new Date(s.getTime() + hours * 3600000);
+  const f = dt => dt.toISOString().slice(0, 16).replace(/[-:]/g, '') + '00';
+  return { allDay: false, start: f(s), end: f(e) };
+}
+
+export function eventSummary(state, ev) {
+  return ev.title || 'Dinner';
+}
+
+export function eventDescription(state, ev) {
+  const lines = [];
+  const guests = ev.guestIds.map(id => byId(state.guests, id)?.name).filter(Boolean);
+  if (guests.length) lines.push(`Guests: ${guests.join(', ')}`);
+  const dishes = ev.dishes.map(d => byId(state.dishes, d.dishId)?.name).filter(Boolean);
+  if (dishes.length) lines.push(`Menu: ${dishes.join(', ')}`);
+  if (ev.beverages) lines.push(`Drinks: ${ev.beverages}`);
+  for (const id of ev.guestIds) {
+    const g = byId(state.guests, id);
+    if (g?.allergies?.length) lines.push(`${g.name} is allergic to ${g.allergies.join(', ')}`);
+  }
+  return lines.join('\n');
+}
+
+export function buildICS(state, events, now = new Date()) {
+  const stamp = now.toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//From My Table//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+  for (const ev of events) {
+    const t = eventTimes(ev);
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:${ev.id}@from-my-table`,
+      `DTSTAMP:${stamp}`,
+      t.allDay ? `DTSTART;VALUE=DATE:${t.start}` : `DTSTART:${t.start}`,
+      t.allDay ? `DTEND;VALUE=DATE:${t.end}` : `DTEND:${t.end}`,
+      `SUMMARY:${icsEscape(eventSummary(state, ev))}`,
+      `DESCRIPTION:${icsEscape(eventDescription(state, ev))}`,
+      'END:VEVENT',
+    );
+  }
+  lines.push('END:VCALENDAR');
+  return lines.map(icsFold).join('\r\n') + '\r\n';
+}
+
+export function googleCalendarUrl(state, ev) {
+  const t = eventTimes(ev);
+  const p = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: eventSummary(state, ev),
+    dates: `${t.start}/${t.end}`,
+    details: eventDescription(state, ev),
+  });
+  return `https://calendar.google.com/calendar/render?${p}`;
 }

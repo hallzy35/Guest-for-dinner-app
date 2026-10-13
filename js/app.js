@@ -1,9 +1,10 @@
 import * as db from './db.js';
 import {
-  COURSES, RECEPTION, autocheck, byId, dishHistory, emptyState, findByName, guestHistory,
-  newId, norm, search, sortEventsDesc, splitList, suggest, validateBackup,
+  COURSES, RECEPTION, autocheck, buildICS, byId, dishHistory, emptyState, findByName, googleCalendarUrl, guestHistory,
+  mergeDishes, mergeGuests, newId, norm, parseDishList, search, sortEventsDesc, splitList, suggest, validateBackup,
 } from './logic.js';
 
+const APP_NAME = 'From My Table';
 let state = emptyState();
 const main = document.getElementById('main');
 
@@ -37,7 +38,7 @@ function visitSummary(events) {
   if (planned) parts.push(`${planned} planned`);
   return parts.join(' · ');
 }
-const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const plural = (n, w) => `${n} ${n === 1 ? w : /(s|sh|ch|x)$/.test(w) ? w + 'es' : w + 's'}`;
 const courseRank = c => (COURSES.indexOf(c) === -1 ? COURSES.length : COURSES.indexOf(c));
 
 function sortedMenu(event) {
@@ -88,6 +89,67 @@ function toast(msg) {
   toast.t = setTimeout(() => el.classList.remove('show'), 2200);
 }
 
+// Hands a generated file to the person: the share sheet where available (iPad), else a download.
+async function deliverFile(name, type, content) {
+  const file = new File([content], name, { type });
+  if (navigator.canShare?.({ files: [file] })) {
+    await navigator.share({ files: [file], title: name });
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(file);
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+// Calendar files download rather than share: on iPad, opening a downloaded .ics shows Calendar's
+// "Add" screen, which the share sheet does not offer.
+function downloadCalendar(name, ics) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+// ---------- theme ----------
+
+const ICON = path => `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">${path}</svg>`;
+const THEME_LABEL = {
+  auto: ICON('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/>') + ' Auto',
+  light: ICON('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>') + ' Light',
+  dark: ICON('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>') + ' Dark',
+};
+
+function applyTheme(t) {
+  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  else delete document.documentElement.dataset.theme;
+  const btn = document.getElementById('theme-btn');
+  btn.innerHTML = THEME_LABEL[t] || THEME_LABEL.auto;
+  btn.setAttribute('aria-label', `Appearance: ${t}. Tap to change.`);
+}
+
+function initTheme() {
+  let t = 'auto';
+  try {
+    t = localStorage.getItem('theme') || 'auto';
+  } catch {}
+  applyTheme(t);
+  document.getElementById('theme-btn').addEventListener('click', () => {
+    const order = ['auto', 'light', 'dark'];
+    t = order[(order.indexOf(t) + 1) % order.length];
+    try {
+      localStorage.setItem('theme', t);
+    } catch {}
+    applyTheme(t);
+  });
+}
+
 // ---------- persistence ----------
 
 async function save(store, record) {
@@ -122,7 +184,7 @@ async function createDish(name, course = '') {
 // ---------- autocomplete ----------
 
 // Wires a text input to a dropdown of existing records, with an "Add new" option.
-function autocomplete(input, { list, exclude = () => [], describe = () => '', onPick, onCreate }) {
+function autocomplete(input, { list, exclude = () => [], describe = () => '', onPick, onCreate, allowCreate = true }) {
   const box = document.createElement('div');
   box.className = 'ac-list';
   box.hidden = true;
@@ -138,7 +200,7 @@ function autocomplete(input, { list, exclude = () => [], describe = () => '', on
     }
     const items = suggest(list(), q, 8, exclude());
     options = items.map(item => ({ item }));
-    if (!findByName(list(), q)) options.push({ create: q });
+    if (allowCreate && !findByName(list(), q)) options.push({ create: q });
     active = 0;
     box.innerHTML = options
       .map((o, i) =>
@@ -192,7 +254,7 @@ function autocomplete(input, { list, exclude = () => [], describe = () => '', on
 // ---------- views ----------
 
 function setTitle(t) {
-  document.title = t ? `${t} · Hostess Diary` : 'Hostess Diary';
+  document.title = t ? `${t} · ${APP_NAME}` : APP_NAME;
 }
 
 function backupReminder() {
@@ -204,7 +266,7 @@ function backupReminder() {
   if (!total) return '';
   const days = last ? (Date.now() - Number(last)) / 86400000 : Infinity;
   if (days < 30) return '';
-  return `<div class="notice">Your diary lives only on this iPad. ${last ? `Last backup was ${Math.floor(days)} days ago.` : 'You have never made a backup.'} <a href="#/backup">Back up now</a></div>`;
+  return `<div class="notice">Your records live only on this iPad. ${last ? `Last backup was ${Math.floor(days)} days ago.` : 'You have never made a backup.'} <a href="#/backup">Back up now</a></div>`;
 }
 
 function viewHome() {
@@ -232,7 +294,7 @@ function homeDefault() {
     return `<div class="empty">
       <h2>Welcome</h2>
       <p>Start by recording a past dinner from your journal, or planning the next one. Guests and dishes you type are saved automatically, so they autocomplete next time.</p>
-      <p><a class="btn primary" href="#/event/new">＋ Add your first event</a></p>
+      <p class="btn-row" style="justify-content:center"><a class="btn primary" href="#/event/new">＋ Add your first event</a> <a class="btn" href="#/import">Add dishes from your cookbook</a></p>
     </div>`;
   }
   const t = today();
@@ -307,11 +369,19 @@ function viewList(kind) {
     guests: { title: 'Guests', add: null },
     dishes: { title: 'Dishes', add: null },
   }[kind];
+  const upcoming = state.events.filter(e => e.date >= today()).sort((a, b) => a.date.localeCompare(b.date));
+  const extraBtn =
+    kind === 'dishes'
+      ? '<a class="btn" href="#/import">Add many at once</a>'
+      : kind === 'events' && upcoming.length
+        ? `<button class="btn" id="cal-all">📅 Add ${plural(upcoming.length, 'upcoming event')} to Calendar</button>`
+        : '';
   setTitle(conf.title);
   main.innerHTML = `
     <div class="search-row">
       <input id="filter" type="search" placeholder="Filter ${conf.title.toLowerCase()}…" autocomplete="off">
       ${conf.add ? `<a class="btn primary" href="${conf.add[0]}">${conf.add[1]}</a>` : `<button class="btn primary" id="add">＋ Add</button>`}
+      ${extraBtn}
     </div>
     <div id="list"></div>`;
   const filter = document.getElementById('filter');
@@ -337,6 +407,9 @@ function viewList(kind) {
     }
   };
   filter.addEventListener('input', draw);
+  document.getElementById('cal-all')?.addEventListener('click', () => {
+    downloadCalendar('upcoming-dinners.ics', buildICS(state, upcoming));
+  });
   document.getElementById('add')?.addEventListener('click', async () => {
     const name = prompt(kind === 'guests' ? 'Guest name' : 'Dish name');
     if (!name?.trim()) return;
@@ -381,7 +454,9 @@ function viewGuest(id) {
         </div>`,
       )
       .join('')}
+    ${mergeSection('guest')}
     <p class="danger-zone"><button class="btn danger" id="del">Delete guest</button></p>`;
+  wireMerge('guest', g);
 
   const form = document.getElementById('gform');
   const persist = debounce(() => {
@@ -439,7 +514,9 @@ function viewDish(id) {
         </div>`,
       )
       .join('')}
+    ${mergeSection('dish')}
     <p class="danger-zone"><button class="btn danger" id="del">Delete dish</button></p>`;
+  wireMerge('dish', d);
 
   const form = document.getElementById('dform');
   const persist = debounce(() => {
@@ -460,12 +537,146 @@ function viewDish(id) {
   });
 }
 
+// ----- merging duplicates -----
+
+function mergeSection(kind) {
+  const what = kind === 'guest' ? 'visits and preferences' : 'history, notes and ingredients';
+  return `<h2>Duplicate?</h2>
+    <div class="card">
+      <p class="hint">If this ${kind} is also listed under another name, find it here to combine the two. All ${what} are kept.</p>
+      <div class="ac-wrap"><input id="merge-in" placeholder="Type the other name…" autocomplete="off" autocorrect="off"></div>
+      <div id="merge-confirm"></div>
+    </div>`;
+}
+
+function wireMerge(kind, rec) {
+  const store = kind === 'guest' ? 'guests' : 'dishes';
+  const count = id =>
+    kind === 'guest' ? plural(guestHistory(state, id).length, 'visit') : `served ${plural(dishHistory(state, id).length, 'time')}`;
+  autocomplete(document.getElementById('merge-in'), {
+    list: () => state[store],
+    exclude: () => [rec.id],
+    allowCreate: false,
+    describe: x => `· ${count(x.id)}`,
+    onPick: other => {
+      const box = document.getElementById('merge-confirm');
+      box.innerHTML = `<div class="merge-confirm">
+        <p>Combine <strong>${esc(rec.name)}</strong> (${count(rec.id)}) and <strong>${esc(other.name)}</strong> (${count(other.id)}) into one ${kind}. Which name should it keep?</p>
+        <div class="btn-row">
+          <button class="btn primary" data-keep="${rec.id}">Keep “${esc(rec.name)}”</button>
+          <button class="btn primary" data-keep="${other.id}">Keep “${esc(other.name)}”</button>
+          <button class="btn" data-cancel>Cancel</button>
+        </div>
+      </div>`;
+      box.querySelector('[data-cancel]').addEventListener('click', () => (box.innerHTML = ''));
+      box.querySelectorAll('[data-keep]').forEach(b =>
+        b.addEventListener('click', async () => {
+          const keepId = b.dataset.keep;
+          const dropId = keepId === rec.id ? other.id : rec.id;
+          const r = kind === 'guest' ? mergeGuests(state, keepId, dropId) : mergeDishes(state, keepId, dropId);
+          await save(store, r.guest || r.dish);
+          for (const e of r.events) await save('events', e);
+          await removeRecord(store, dropId);
+          toast('Merged');
+          if (location.hash === `#/${kind}/${keepId}`) route();
+          else location.hash = `#/${kind}/${keepId}`;
+        }),
+      );
+    },
+  });
+}
+
+// ----- bulk add dishes -----
+
+function viewImport() {
+  setTitle('Add many dishes');
+  main.innerHTML = `
+    <p><a href="#/dishes">← All dishes</a></p>
+    <h2>Add many dishes at once</h2>
+    <div class="card form">
+      <p>Put one dish per line. Page numbers, dotted leaders and bullets are removed. Headings such as “Starters” or “Desserts” set the course for the dishes below them.</p>
+      <ol class="steps">
+        <li><strong>From your cookbook file:</strong> open it in Pages or Word, copy the contents page or the recipe titles, and paste them below.</li>
+        <li><strong>From a printed page:</strong> tap the box below, tap it again, and choose <strong>Scan Text</strong>, then point the camera at the page.</li>
+        <li><strong>From a photo:</strong> open it in Photos, press and hold on the text, choose <strong>Select All</strong>, then <strong>Copy</strong>, and paste below.</li>
+      </ol>
+      <label>Dishes <textarea id="bulk" rows="10" placeholder="STARTERS&#10;Gravlax with dill ........ 12&#10;MAINS&#10;Beef Wellington ........ 22"></textarea></label>
+      <div class="row">
+        <label>Course if there’s no heading <select id="bulk-course"><option value="">—</option>${COURSES.map(c => `<option>${esc(c)}</option>`).join('')}</select></label>
+        <button class="btn primary" id="bulk-review-btn" type="button">Review list</button>
+      </div>
+    </div>
+    <div id="bulk-review"></div>`;
+
+  const bulk = document.getElementById('bulk');
+  try {
+    bulk.value = sessionStorage.getItem('bulk') || '';
+  } catch {}
+  bulk.addEventListener('input', () => {
+    try {
+      sessionStorage.setItem('bulk', bulk.value);
+    } catch {}
+  });
+
+  document.getElementById('bulk-review-btn').addEventListener('click', () => {
+    const rows = parseDishList(bulk.value, document.getElementById('bulk-course').value);
+    const review = document.getElementById('bulk-review');
+    if (!rows.length) {
+      review.innerHTML = '<p class="muted">No dish names found. Paste or scan some text above first.</p>';
+      return;
+    }
+    review.innerHTML = `
+      <h2>Check the list</h2>
+      <div class="card">
+        <p class="hint">Fix any names, set courses, and untick anything that isn’t a dish. Dishes you already have are unticked.</p>
+        <ul class="import-list">${rows
+          .map((r, i) => {
+            const exists = findByName(state.dishes, r.name);
+            return `<li class="${exists ? 'dupe' : ''}">
+              <input type="checkbox" id="imp-on-${i}" ${exists ? '' : 'checked'} aria-label="Include">
+              <input type="text" id="imp-name-${i}" value="${esc(r.name)}" aria-label="Dish name">
+              <select id="imp-course-${i}" aria-label="Course"><option value="">—</option>${COURSES.map(
+                c => `<option ${c === r.course ? 'selected' : ''}>${esc(c)}</option>`,
+              ).join('')}</select>
+              ${exists ? '<span class="tag exists">Already added</span>' : ''}
+            </li>`;
+          })
+          .join('')}</ul>
+        <p class="btn-row" style="margin-top:14px"><button class="btn primary" id="bulk-save" type="button"></button></p>
+      </div>`;
+    const saveBtn = document.getElementById('bulk-save');
+    const checked = () => rows.map((_, i) => i).filter(i => document.getElementById(`imp-on-${i}`).checked);
+    const label = () => {
+      const n = checked().length;
+      saveBtn.textContent = `Add ${plural(n, 'dish')}`;
+      saveBtn.disabled = !n;
+    };
+    review.addEventListener('change', label);
+    label();
+    saveBtn.addEventListener('click', async () => {
+      let added = 0;
+      for (const i of checked()) {
+        const name = document.getElementById(`imp-name-${i}`).value.trim();
+        if (!name || findByName(state.dishes, name)) continue;
+        await createDish(name, document.getElementById(`imp-course-${i}`).value);
+        added++;
+      }
+      try {
+        sessionStorage.removeItem('bulk');
+      } catch {}
+      toast(`Added ${plural(added, 'dish')}`);
+      location.hash = '#/dishes';
+    });
+    review.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
 // ----- event (plan / record) -----
 
 function viewEvent(id) {
   let ev;
   if (id === 'new') {
-    ev = { id: newId(), date: today(), title: '', guestIds: [], dishes: [], beverages: '', worked: '', didnt: '', notes: '' };
+    ev = { id: newId(), date: today(), time: '', title: '', guestIds: [], dishes: [], beverages: '', worked: '', didnt: '', notes: '' };
   } else {
     ev = byId(state.events, id);
     if (!ev) return notFound();
@@ -481,7 +692,7 @@ function viewEvent(id) {
     }
   }
 
-  const FIELDS = ['date', 'title', 'beverages', 'worked', 'didnt', 'notes'];
+  const FIELDS = ['date', 'time', 'title', 'beverages', 'worked', 'didnt', 'notes'];
 
   function draw(focusId) {
     // Pick up anything typed but not yet flushed by a debounce before the DOM is rebuilt.
@@ -499,6 +710,7 @@ function viewEvent(id) {
       <div class="card form">
         <div class="row">
           <label>Date <input type="date" id="date" value="${esc(ev.date)}"></label>
+          <label>Time <input type="time" id="time" value="${esc(ev.time || '')}"></label>
           <label class="grow">Occasion <input id="title" value="${esc(ev.title)}" placeholder="e.g. Book club dinner"></label>
         </div>
       </div>
@@ -530,7 +742,15 @@ function viewEvent(id) {
         <label>Other notes <textarea id="notes" rows="2">${esc(ev.notes)}</textarea></label>
         <p class="hint">${saved ? 'Changes save automatically.' : 'This event is saved as soon as you add something.'}</p>
       </div>
-      ${saved ? '<p class="danger-zone"><button class="btn danger" id="del">Delete event</button></p>' : ''}`;
+      ${saved ? `<h2>Calendar</h2>
+      <div class="card">
+        <div class="btn-row">
+          <button class="btn" id="cal-ics" type="button">📅 Add to Calendar</button>
+          <button class="btn" id="cal-google" type="button">Google Calendar</button>
+        </div>
+        <p class="hint">${ev.time ? 'Added as a 3-hour event.' : 'No time set, so it’s added as an all-day event.'} The guest list, menu and any allergies go in the event notes.</p>
+      </div>
+      <p class="danger-zone"><button class="btn danger" id="del">Delete event</button></p>` : ''}`;
 
     // fields
     for (const f of FIELDS) {
@@ -538,10 +758,17 @@ function viewEvent(id) {
       const persist = debounce(() => {
         ev[f] = el.value;
         commit();
-        if (f === 'date') draw(); // date changes what counts as "before"
-      }, f === 'date' ? 0 : 400);
-      el.addEventListener(f === 'date' ? 'change' : 'input', persist);
+        if (f === 'date' || f === 'time') draw(); // date changes what counts as "before"; time changes calendar hint
+      }, f === 'date' || f === 'time' ? 0 : 400);
+      el.addEventListener(f === 'date' || f === 'time' ? 'change' : 'input', persist);
     }
+
+    document.getElementById('cal-ics')?.addEventListener('click', () => {
+      downloadCalendar(`${(ev.title || 'dinner').replace(/[^\w-]+/g, '-').toLowerCase()}-${ev.date}.ics`, buildICS(state, [ev]));
+    });
+    document.getElementById('cal-google')?.addEventListener('click', () => {
+      window.open(googleCalendarUrl(state, ev), '_blank', 'noopener');
+    });
 
     // guests
     autocomplete(document.getElementById('guest-in'), {
@@ -708,20 +935,9 @@ function viewBackup() {
   });
 
   document.getElementById('export').addEventListener('click', async () => {
-    const data = { app: 'hostess-diary', version: 1, exportedAt: new Date().toISOString(), ...state };
-    const json = JSON.stringify(data, null, 2);
-    const name = `hostess-diary-${today()}.json`;
-    const file = new File([json], name, { type: 'application/json' });
+    const data = { app: 'from-my-table', version: 1, exportedAt: new Date().toISOString(), ...state };
     try {
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: name });
-      } else {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(file);
-        a.download = name;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-      }
+      await deliverFile(`from-my-table-backup-${today()}.json`, 'application/json', JSON.stringify(data, null, 2));
       try {
         localStorage.setItem('lastBackup', String(Date.now()));
       } catch {}
@@ -761,7 +977,7 @@ function route() {
   const [, page, id] = location.hash.replace(/^#/, '').split('/');
   document.querySelectorAll('nav a').forEach(a => {
     const target = a.getAttribute('href').split('/')[1];
-    const map = { guest: 'guests', dish: 'dishes', event: 'events' };
+    const map = { guest: 'guests', dish: 'dishes', event: 'events', import: 'dishes' };
     a.classList.toggle('active', target === (map[page] || page || ''));
   });
   window.scrollTo(0, 0);
@@ -779,12 +995,15 @@ function route() {
       return viewDish(id);
     case 'backup':
       return viewBackup();
+    case 'import':
+      return viewImport();
     default:
       return viewHome();
   }
 }
 
 async function start() {
+  initTheme();
   try {
     state = { ...emptyState(), ...(await db.loadAll()) };
   } catch (err) {

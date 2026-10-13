@@ -1,7 +1,7 @@
 // Offline support: serve the app shell from cache, refresh it in the background.
 // Bump VERSION whenever app files change so iPads pick up the new version.
-const VERSION = 'v1';
-const CACHE = `hostess-diary-${VERSION}`;
+const VERSION = 'v2';
+const CACHE = `from-my-table-${VERSION}`;
 const SHELL = [
   './',
   'index.html',
