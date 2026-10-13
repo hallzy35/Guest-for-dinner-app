@@ -20,6 +20,9 @@ An iPad app for people who cook for friends and family: record who came to dinne
 - **Recipe cards.** Each dish is a full recipe card laid out like the chef's printed pages: main ingredient, style, complexity, category, prep/cooking/total time, ingredients, instructions, cooking style, source, stars and chef's notes. The Dishes tab is a recipe index with a category filter.
 - **Recipe files.** Settings → *Add dishes* → *Choose recipe file* loads recipes converted from scanned pages; recipes already in the app are updated in place, keeping their history.
 - **Add many dishes at once.** Settings → *Add dishes* → *Add many at once*: paste recipe titles from your cookbook file, use the iPad’s *Scan Text* on a printed page, or copy text from a photo. Page numbers and dot leaders are removed, and headings like “Desserts” set the course. You review the list before anything is saved.
+- **Find dishes for these guests.** From an event, open the recipe index filtered to dishes none of the guests has had before and that don't clash with their allergies or dislikes; tap Add to put a dish on the menu.
+- **Shopping list.** From an event, list every ingredient by dish, tick off what you already have, then print or share what's left. Quantities are not combined across dishes, since the cards' ingredient lines are free text.
+- **Cookbook indexes.** The Dishes tab sorts by category & time, cooking style, best rated or under 30 minutes, with combinable filters, as cards or an index table.
 - **Add to Calendar.** Each event (with an optional start time) can be added to the iPad’s calendar or Google Calendar, with the guest list, menu and allergies in the notes. The Events tab can add all upcoming events at once.
 - **Light and dark mode.** Follows the iPad’s setting by default; the button at the top right switches between Auto, Light and Dark.
 - **Works offline** and installs to the Home Screen.

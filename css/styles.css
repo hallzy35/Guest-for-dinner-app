@@ -426,3 +426,32 @@ ol.steps li { margin-bottom: 4px; }
 .index-table .num { text-align: center; white-space: nowrap; }
 .index-table td:first-child { min-width: 200px; }
 .stars-cell { color: var(--drink-ink); font-weight: 600; }
+
+/* ---------- planning & shopping ---------- */
+
+.plan-banner .check { display: flex; gap: 10px; align-items: center; margin: 6px 0; font-weight: 500; }
+.check input { width: 22px; height: 22px; min-height: 22px; accent-color: var(--accent); flex: none; }
+.plan-tile { display: flex; flex-direction: column; gap: 6px; }
+.plan-tile .card { flex: 1; }
+.add-btn { min-height: 38px; padding: 0 14px; }
+.index-table .add-btn { min-height: 34px; }
+
+.shop-lines { list-style: none; margin: 0; padding: 0; }
+.shop-lines li { border-bottom: 1px solid var(--line); }
+.shop-lines li:last-child { border-bottom: 0; }
+.shop-lines label { display: flex; gap: 12px; align-items: center; padding: 9px 0; cursor: pointer; }
+.shop-lines input { width: 22px; height: 22px; min-height: 22px; accent-color: var(--accent); flex: none; }
+.shop-lines li.have span { text-decoration: line-through; color: var(--muted); }
+.shop-heading { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--muted); padding: 12px 0 2px; }
+
+@media print {
+  :root { --bg: #fff; --surface: #fff; --ink: #000; --muted: #444; --line: #ccc; }
+  header, .no-print, #toast, .shop-lines li.have { display: none !important; }
+  body, main { background: #fff; padding: 0; }
+  .card { box-shadow: none; border: 0; padding: 0 0 8px; break-inside: avoid; }
+  .shop-lines input { display: none; }
+  .shop-lines label::before { content: "☐"; }
+  .shop-lines label { padding: 3px 0; }
+  .shop-lines li { border: 0; }
+  a { color: #000; }
+}

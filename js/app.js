@@ -1,6 +1,6 @@
 import * as db from './db.js';
 import {
-  CATEGORIES, COMPLEXITY, COURSES, INDEX_MODES, RECEPTION, STYLES, buildIndex, applyRecipe, autocheck, emptyDish, normalizeDish, planRecipeImport, buildICS, byId, dishHistory, emptyState, findByName, googleCalendarUrl, guestHistory,
+  CATEGORIES, COMPLEXITY, COURSES, INDEX_MODES, RECEPTION, STYLES, buildIndex, dishSuitability, shoppingList, shoppingText, applyRecipe, autocheck, emptyDish, normalizeDish, planRecipeImport, buildICS, byId, dishHistory, emptyState, findByName, googleCalendarUrl, guestHistory,
   mergeDishes, mergeGuests, newId, norm, parseDishList, search, sortEventsDesc, splitList, suggest, validateBackup,
 } from './logic.js';
 
@@ -485,12 +485,41 @@ try {
   Object.assign(dishIndexState, JSON.parse(sessionStorage.getItem('dishIndex') || '{}'));
 } catch {}
 
-function viewDishIndex() {
+function viewDishIndex(planEventId) {
   setTitle('Dishes');
   const s = dishIndexState;
+  const plan = planEventId ? byId(state.events, planEventId) : null;
+  if (planEventId && !plan) return notFound();
+  if (plan) {
+    s.hideServed ??= true;
+    s.hideClash ??= true;
+  }
+  const suit = plan ? dishSuitability(state, plan) : null;
+  const onMenu = id => plan?.dishes.some(d => d.dishId === id);
+  const planDishes = () =>
+    !plan
+      ? state.dishes
+      : state.dishes.filter(d => {
+          const x = suit.get(d.id);
+          if (s.hideServed && x.servedTo.length) return false;
+          if (s.hideClash && x.conflicts.length) return false;
+          return true;
+        });
+  const hiddenServed = plan ? state.dishes.filter(d => suit.get(d.id).servedTo.length).length : 0;
+  const hiddenClash = plan ? state.dishes.filter(d => suit.get(d.id).conflicts.length).length : 0;
+  const planBanner = plan
+    ? `<p><a href="#/event/${plan.id}">← Back to ${eventLabel(plan)}</a></p>
+      <div class="card plan-banner">
+        <div class="card-title">Choosing dishes for ${esc(plan.guestIds.map(guestName).join(', ') || 'this event')}</div>
+        <label class="check"><input type="checkbox" id="hide-served" ${s.hideServed ? 'checked' : ''}> Hide dishes any of them has had before <span class="muted">(${hiddenServed})</span></label>
+        <label class="check"><input type="checkbox" id="hide-clash" ${s.hideClash ? 'checked' : ''}> Hide dishes that clash with an allergy or dislike <span class="muted">(${hiddenClash})</span></label>
+        <p class="hint">Tap “Add” to put a dish on the menu. ${plural(plan.dishes.length, 'dish')} on the menu so far.</p>
+      </div>`
+    : '';
   const cuisines = [...new Set(state.dishes.map(d => d.cuisine).filter(Boolean))].sort();
   const opt = (v, label, cur) => `<option value="${esc(v)}" ${String(cur ?? '') === String(v) ? 'selected' : ''}>${esc(label)}</option>`;
   main.innerHTML = `
+    ${planBanner}
     <div class="search-row">
       <input id="filter" type="search" placeholder="Search name, ingredient, source…" autocomplete="off" value="${esc(s.f.q || '')}">
       <div class="segmented" role="group" aria-label="View">
@@ -515,7 +544,7 @@ function viewDishIndex() {
     </div>
     <div id="list"></div>`;
 
-  const save = () => {
+  const remember = () => {
     try {
       sessionStorage.setItem('dishIndex', JSON.stringify(s));
     } catch {}
@@ -523,10 +552,10 @@ function viewDishIndex() {
   const listEl = document.getElementById('list');
 
   const draw = () => {
-    const groups = buildIndex(state.dishes, s.mode, s.f);
+    const groups = buildIndex(planDishes(), s.mode, s.f);
     const total = groups.reduce((n, g) => n + g.items.length, 0);
     if (!total) {
-      listEl.innerHTML = `<p class="muted">${state.dishes.length ? 'No dishes match.' : 'No dishes yet. Add them from Settings → Add dishes, or type one into an event’s menu.'}</p>`;
+      listEl.innerHTML = `<p class="muted">${state.dishes.length ? (plan ? 'No dishes match. Try untoggling a “Hide” option above.' : 'No dishes match.') : 'No dishes yet. Add them from Settings → Add dishes, or type one into an event’s menu.'}</p>`;
       return;
     }
     const count = `<p class="muted small index-count">${plural(total, 'recipe')}</p>`;
@@ -535,7 +564,14 @@ function viewDishIndex() {
       groups
         .map(g => {
           const head = g.heading ? `<h2 class="index-heading">${esc(s.mode === 'cuisine' ? g.heading : CATEGORY_HEADINGS[g.heading] || g.heading)} <span class="muted small">${g.items.length}</span></h2>` : '';
-          return head + (s.view === 'list' ? indexTable(g.items) : `<div class="recipe-grid-list">${g.items.map(dishTile).join('')}</div>`);
+          const addBtn = d =>
+            plan ? `<button type="button" class="btn ${onMenu(d.id) ? '' : 'primary'} add-btn" data-add="${d.id}" ${onMenu(d.id) ? 'disabled' : ''}>${onMenu(d.id) ? 'On menu ✓' : 'Add'}</button>` : '';
+          return (
+            head +
+            (s.view === 'list'
+              ? indexTable(g.items, addBtn)
+              : `<div class="recipe-grid-list">${g.items.map(d => (plan ? `<div class="plan-tile">${dishTile(d)}${addBtn(d)}</div>` : dishTile(d))).join('')}</div>`)
+          );
         })
         .join('');
   };
@@ -544,42 +580,62 @@ function viewDishIndex() {
     'input',
     debounce(e => {
       s.f.q = e.target.value;
-      save();
+      remember();
       draw();
     }, 150),
   );
   main.querySelectorAll('[data-mode]').forEach(b =>
     b.addEventListener('click', () => {
       s.mode = b.dataset.mode;
-      save();
-      viewDishIndex();
+      remember();
+      viewDishIndex(planEventId);
     }),
   );
   main.querySelectorAll('[data-view]').forEach(b =>
     b.addEventListener('click', () => {
       s.view = b.dataset.view;
-      save();
-      viewDishIndex();
+      remember();
+      viewDishIndex(planEventId);
     }),
   );
   document.getElementById('toggle-filters').addEventListener('click', () => {
     s.showFilters = !s.showFilters;
-    save();
-    viewDishIndex();
+    remember();
+    viewDishIndex(planEventId);
   });
   main.querySelectorAll('[data-f]').forEach(sel =>
     sel.addEventListener('change', () => {
       if (sel.value) s.f[sel.dataset.f] = sel.value;
       else delete s.f[sel.dataset.f];
-      save();
-      viewDishIndex();
+      remember();
+      viewDishIndex(planEventId);
     }),
   );
   document.getElementById('clear-filters').addEventListener('click', () => {
     s.f = s.f.q ? { q: s.f.q } : {};
-    save();
-    viewDishIndex();
+    remember();
+    viewDishIndex(planEventId);
   });
+  if (plan) {
+    for (const [id, key] of [['hide-served', 'hideServed'], ['hide-clash', 'hideClash']]) {
+      document.getElementById(id).addEventListener('change', e => {
+        s[key] = e.target.checked;
+        remember();
+        viewDishIndex(planEventId);
+      });
+    }
+    listEl.addEventListener('click', async e => {
+      const b = e.target.closest('[data-add]');
+      if (!b || onMenu(b.dataset.add)) return;
+      plan.dishes.push({ dishId: b.dataset.add, reception: '', note: '' });
+      await save('events', structuredClone(plan));
+      toast(`Added ${dishName(b.dataset.add)}`);
+      b.textContent = 'On menu ✓';
+      b.disabled = true;
+      b.classList.remove('primary');
+      main.querySelector('.plan-banner .hint').textContent = `Tap “Add” to put a dish on the menu. ${plural(plan.dishes.length, 'dish')} on the menu so far.`;
+    });
+  }
   draw();
 }
 
@@ -609,9 +665,9 @@ function dishTile(d) {
 }
 
 // Rows laid out like the printed cookbook's index pages.
-function indexTable(items) {
+function indexTable(items, action = () => '') {
   return `<div class="index-scroll"><table class="index-table">
-    <thead><tr><th>Name</th><th>Main ingredient</th><th class="num">Total</th><th class="num">Style</th><th class="num">Comp</th><th>Cat</th><th class="num">Stars</th></tr></thead>
+    <thead><tr><th>Name</th><th>Main ingredient</th><th class="num">Total</th><th class="num">Style</th><th class="num">Comp</th><th>Cat</th><th class="num">Stars</th>${items.length && action(items[0]) ? '<th></th>' : ''}</tr></thead>
     <tbody>${items
       .map(
         d => `<tr>
@@ -622,6 +678,7 @@ function indexTable(items) {
           <td class="num">${d.complexity || '—'}</td>
           <td>${d.category ? `${CATEGORIES.indexOf(d.category) + 1}` : '—'}</td>
           <td class="num stars-cell">${d.stars || '—'}</td>
+          ${action(d) ? `<td>${action(d)}</td>` : ''}
         </tr>`,
       )
       .join('')}</tbody></table></div>`;
@@ -780,6 +837,84 @@ function choiceGroup(legend, name, map, value) {
       ([n, label]) => `<label class="choice"><input type="radio" name="${name}" value="${n}" ${Number(n) === value ? 'checked' : ''}><span>${n} = ${esc(label)}</span></label>`,
     )
     .join('')}</fieldset>`;
+}
+
+// ----- shopping list -----
+
+function viewShopping(id) {
+  const ev = byId(state.events, id);
+  if (!ev) return notFound();
+  setTitle(`Shopping · ${ev.title || fmtDate(ev.date)}`);
+  const have = new Set(ev.have || []);
+  const list = shoppingList(state, ev);
+  const remaining = () => list.reduce((n, g) => n + g.lines.filter(l => !l.heading && !have.has(l.key)).length, 0);
+  main.innerHTML = `
+    <p class="no-print"><a href="#/event/${ev.id}">← Back to ${eventLabel(ev)}</a></p>
+    <h2 class="shop-title">Shopping list · ${esc(ev.title || 'Dinner')} · ${fmtDate(ev.date)}</h2>
+    <div class="card no-print">
+      <p class="hint">Tick anything you already have. Printing and sharing include only what's left to buy.</p>
+      <div class="btn-row spaced">
+        <button class="btn primary" id="print" type="button">Print</button>
+        <button class="btn" id="share" type="button">Share or copy</button>
+        <button class="btn" id="clear" type="button">Clear ticks</button>
+        <span class="muted small" id="remaining"></span>
+      </div>
+    </div>
+    ${
+      list.length
+        ? list
+            .map(
+              ({ dish, lines }) => `<section class="card shop-dish">
+          <div class="card-title"><a href="#/dish/${dish.id}">${esc(dish.name)}</a></div>
+          ${
+            lines.length
+              ? `<ul class="shop-lines">${lines
+                  .map(l =>
+                    l.heading
+                      ? `<li class="shop-heading">${esc(l.text)}</li>`
+                      : `<li class="${have.has(l.key) ? 'have' : ''}"><label><input type="checkbox" data-key="${esc(l.key)}" ${have.has(l.key) ? 'checked' : ''}><span>${esc(l.text)}</span></label></li>`,
+                  )
+                  .join('')}</ul>`
+              : '<p class="muted">No ingredients listed for this dish. <a href="#/dish/' + dish.id + '/edit">Add them</a>.</p>'
+          }
+        </section>`,
+            )
+            .join('')
+        : '<p class="muted">No dishes on this menu yet.</p>'
+    }`;
+
+  const update = () => (document.getElementById('remaining').textContent = `${plural(remaining(), 'item')} to buy`);
+  const persist = () => save('events', { ...byId(state.events, ev.id), have: [...have] });
+  main.querySelectorAll('[data-key]').forEach(cb =>
+    cb.addEventListener('change', () => {
+      if (cb.checked) have.add(cb.dataset.key);
+      else have.delete(cb.dataset.key);
+      cb.closest('li').classList.toggle('have', cb.checked);
+      update();
+      persist();
+    }),
+  );
+  document.getElementById('clear').addEventListener('click', () => {
+    have.clear();
+    persist();
+    viewShopping(id);
+  });
+  document.getElementById('print').addEventListener('click', () => window.print());
+  document.getElementById('share').addEventListener('click', async () => {
+    const text = `Shopping list — ${ev.title || 'Dinner'}, ${fmtDate(ev.date)}\n\n${shoppingText(state, ev, [...have])}`;
+    try {
+      if (navigator.share) return await navigator.share({ title: 'Shopping list', text });
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Shopping list copied');
+    } catch {
+      alert(text);
+    }
+  });
+  update();
 }
 
 // ----- merging duplicates -----
@@ -977,6 +1112,10 @@ function viewEvent(id) {
           <div class="ac-wrap grow"><input id="dish-in" placeholder="Add a dish…" autocomplete="off"></div>
           <select id="dish-course" aria-label="Course for a new dish"><option value="">Course for new dish…</option>${COURSES.map(c => `<option>${esc(c)}</option>`).join('')}</select>
         </div>
+        ${saved && (ev.guestIds.length || ev.dishes.length) ? `<div class="btn-row spaced">
+          ${ev.guestIds.length ? `<a class="btn" href="#/dishes/for/${ev.id}">Find dishes for these guests</a>` : ''}
+          ${ev.dishes.length ? `<a class="btn" href="#/event/${ev.id}/shop">Shopping list</a>` : ''}
+        </div>` : ''}
       </div>
 
       <h2>Notes</h2>
@@ -1315,9 +1454,9 @@ function route() {
     case 'guests':
       return viewList(page);
     case 'dishes':
-      return viewDishIndex();
+      return id === 'for' ? viewDishIndex(sub) : viewDishIndex();
     case 'event':
-      return viewEvent(id);
+      return sub === 'shop' ? viewShopping(id) : viewEvent(id);
     case 'guest':
       return viewGuest(id);
     case 'dish':

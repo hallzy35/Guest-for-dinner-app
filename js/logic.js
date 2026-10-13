@@ -554,3 +554,62 @@ export function buildIndex(dishes, mode = 'category', filters = {}) {
   );
   return headings.map(heading => ({ heading, items: groups.get(heading).sort(within) }));
 }
+
+// ---------- planning helpers ----------
+
+// For each dish: which of the event's guests have had it before, and any allergy/dislike clashes.
+export function dishSuitability(state, event) {
+  const guests = event.guestIds.map(id => byId(state.guests, id)).filter(Boolean);
+  const past = state.events.filter(e => e.id !== event.id);
+  const out = new Map();
+  for (const dish of state.dishes) {
+    const servedTo = guests.filter(g => past.some(e => e.guestIds.includes(g.id) && e.dishes.some(d => d.dishId === dish.id)));
+    const conflicts = guests.flatMap(g => dishConflicts(g, dish).map(c => ({ guest: g, ...c })));
+    out.set(dish.id, { servedTo, conflicts });
+  }
+  return out;
+}
+
+// A line like "GLAZE:" or "DIPPING THINGS:" is a heading on the card, not something to buy.
+export function isIngredientHeading(line) {
+  return /:\s*$/.test(line) && line === line.toUpperCase();
+}
+
+// Shopping list items for an event, grouped by dish in menu order.
+// Each item has a stable key so "already have it" ticks survive edits elsewhere.
+export function shoppingList(state, event) {
+  return event.dishes
+    .map(entry => byId(state.dishes, entry.dishId))
+    .filter(Boolean)
+    .map(dish => ({
+      dish,
+      lines: (dish.ingredients || []).map((text, i) => ({
+        key: `${dish.id}|${i}|${norm(text)}`,
+        text,
+        heading: isIngredientHeading(text),
+      })),
+    }));
+}
+
+export function shoppingText(state, event, haveKeys = []) {
+  const have = new Set(haveKeys);
+  const parts = [];
+  for (const { dish, lines } of shoppingList(state, event)) {
+    const need = [];
+    let pendingHeading = null;
+    for (const l of lines) {
+      if (l.heading) {
+        pendingHeading = l.text;
+        continue;
+      }
+      if (have.has(l.key)) continue;
+      if (pendingHeading) {
+        need.push(`  ${pendingHeading}`);
+        pendingHeading = null;
+      }
+      need.push(`  ☐ ${l.text}`);
+    }
+    if (need.length) parts.push(`${dish.name}\n${need.join('\n')}`);
+  }
+  return parts.join('\n\n');
+}
