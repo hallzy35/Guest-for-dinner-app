@@ -7,7 +7,7 @@
 //              dishes: [{ dishId, reception: ''|'hit'|'ok'|'miss', note }],
 //              beverages, worked, didnt, notes }]
 
-export const COURSES = ['Cocktail / appetizer', 'Starter', 'Soup', 'Salad', 'Main', 'Side', 'Cheese', 'Dessert', 'Other'];
+export const COURSES = ['Cocktail / appetizer', 'Starter', 'Soup', 'Salad', 'Main', 'Side', 'Cheese', 'Dessert', 'Sauces & Dressings'];
 
 // The recipe-card fields, matching the chef's printed recipe pages.
 export const CATEGORIES = ['Appy', 'Pasta', 'Starch', 'Entrée', 'Veggie', 'Dessert', 'Snack', 'Other'];
@@ -282,6 +282,7 @@ const COURSE_HEADINGS = [
   ['Side', ['side', 'side dish', 'vegetable', 'accompaniment', 'side and vegetable', 'side vegetable']],
   ['Cheese', ['cheese', 'cheese course']],
   ['Dessert', ['dessert', 'pudding', 'sweet', 'afters']],
+  ['Sauces & Dressings', ['sauce', 'dressing', 'sauce and dressing', 'condiment', 'dip', 'rub', 'marinade']],
 ];
 
 // A line is a course heading only if it is exactly a heading word or its plural ("Desserts", "Side dishes").
@@ -445,6 +446,7 @@ export function normalizeDish(d) {
   out.complexity = clampInt(out.complexity, 3);
   const stars = Math.round(Number(out.stars) * 2) / 2;
   out.stars = stars >= 0.5 && stars <= 5 ? stars : 0;
+  if (out.course === 'Other') out.course = 'Sauces & Dressings'; // renamed course
   if (!CATEGORIES.includes(out.category)) {
     const n = Number(out.category);
     out.category = n >= 1 && n <= 8 ? CATEGORIES[n - 1] : '';

@@ -62,3 +62,9 @@ test('mergeDishes keeps card fields from either record', () => {
   assert.equal(dish.cuisine, 'Asian');
   assert.equal(dish.instructions, 'Step A\n\nStep B');
 });
+
+test('old "Other" course becomes "Sauces & Dressings"; headings map to it', async () => {
+  const { courseForHeading } = await import('../js/logic.js');
+  assert.equal(normalizeDish({ name: 'Aioli', course: 'Other' }).course, 'Sauces & Dressings');
+  assert.equal(courseForHeading('Sauces'), 'Sauces & Dressings');
+});
