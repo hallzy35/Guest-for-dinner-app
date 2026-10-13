@@ -62,6 +62,8 @@
 }
 
 * { box-sizing: border-box; }
+/* Layout rules (display: grid/flex) must not override the hidden attribute. */
+[hidden] { display: none !important; }
 
 html { -webkit-text-size-adjust: 100%; background: var(--bg); }
 
@@ -456,7 +458,30 @@ ol.steps li { margin-bottom: 4px; }
 .shop-lines li.have span { text-decoration: line-through; color: var(--muted); }
 .shop-heading { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--muted); padding: 12px 0 2px; }
 
+/* ---------- help ---------- */
+
+.help-link { font-family: var(--font-body); font-size: 14px; font-weight: 500; margin-left: 8px; white-space: nowrap; }
+.plan-banner .help-link { float: right; margin: 0 0 4px 8px; }
+.help-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 8px 0 12px; }
+.help-title { font-family: var(--font-display); font-size: 28px; margin: 0; }
+.help-toc ol { margin: 0; padding-left: 22px; columns: 2 240px; column-gap: 32px; }
+.help-toc li { padding: 4px 0; break-inside: avoid; }
+.help-topic { margin-top: 16px; scroll-margin-top: 90px; }
+.help-why { color: var(--muted); margin-top: 0; }
+.help-steps { padding-left: 22px; }
+.help-steps li { margin-bottom: 8px; }
+.help-trouble dt { font-weight: 600; margin-top: 8px; }
+.help-trouble dd { margin: 2px 0 0; }
+.help-shot { display: block; max-width: 100%; height: auto; margin-top: 12px; border-radius: 10px; border: 1px solid var(--line); }
+.tag.served { background: var(--served-bg); color: var(--served-ink); }
+.tag.fav { background: var(--accent-soft); color: var(--accent); }
+
 @media print {
+  .card.help-topic { break-inside: auto; padding: 0; margin-top: 18px; }
+  .help-head { margin-top: 0; }
+  .help-topic h2, .help-topic h3, .help-why, .help-trouble dt { break-after: avoid; }
+  .help-steps li, .help-trouble dt, .help-trouble dd { break-inside: avoid; }
+  .help-shot { max-width: 55%; break-inside: avoid; }
   :root { --bg: #fff; --surface: #fff; --ink: #000; --muted: #444; --line: #ccc; }
   header, .no-print, #toast, .shop-lines li.have { display: none !important; }
   body, main { background: #fff; padding: 0; }

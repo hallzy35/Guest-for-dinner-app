@@ -2,7 +2,7 @@
 // Bump VERSION whenever app files change so iPads pick up the new version.
 // Each version's files are fetched together, bypassing the browser's HTTP cache, and never
 // refreshed piecemeal — so a new app.js can't end up paired with an old logic.js.
-const VERSION = 'v15';
+const VERSION = 'v16';
 const CACHE = `done-like-dinner-${VERSION}`;
 const SHELL = [
   './',
@@ -12,6 +12,8 @@ const SHELL = [
   'js/app.js',
   'js/db.js',
   'js/logic.js',
+  'js/help.js',
+  ...['settings-add', 'guest', 'event', 'plan', 'shop', 'index', 'merge'].map(n => `help/${n}.jpg`),
   'icons/icon-180.png',
   'icons/icon-192.png',
   'icons/icon-512.png',

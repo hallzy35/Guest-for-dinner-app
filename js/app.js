@@ -1,4 +1,5 @@
 import * as db from './db.js';
+import { HELP_TOPICS } from './help.js';
 import {
   CATEGORIES, COMPLEXITY, COURSES, INDEX_MODES, RECEPTION, SORT_COLUMNS, STYLES, buildIndex, sortDishes, dishSuitability, shoppingList, shoppingText, applyRecipe, autocheck, emptyDish, normalizeDish, planRecipeImport, buildICS, byId, dishHistory, emptyState, findByName, googleCalendarUrl, guestHistory,
   isFavorite, mergeBackup, mergeDishes, mergeGuests, newId, servedEvents, setFavorite, norm, parseDishList, search, sortEventsDesc, splitList, suggest, validateBackup,
@@ -558,6 +559,7 @@ function viewDishIndex(planEventId) {
   const planBanner = plan
     ? `<p><a href="#/event/${plan.id}">← Back to ${eventLabel(plan)}</a></p>
       <div class="card plan-banner">
+        ${helpLink('find')}
         <div class="card-title">Choosing dishes for ${esc(plan.guestIds.map(guestName).join(', ') || 'this event')}</div>
         <label class="check"><input type="checkbox" id="hide-served" ${s.hideServed ? 'checked' : ''}> Hide dishes any of them has had before (except favourites) <span class="muted">(${hiddenServed})</span></label>
         <label class="check"><input type="checkbox" id="hide-clash" ${s.hideClash ? 'checked' : ''}> Hide dishes that clash with an allergy or dislike <span class="muted">(${hiddenClash})</span></label>
@@ -1205,7 +1207,7 @@ function viewEvent(id) {
       </div>
       ${ev.guestIds.length ? `<div class="briefing">${ev.guestIds.map(briefing).join('')}</div>` : ''}
 
-      <h2>Menu</h2>
+      <h2>Menu ${helpLink('plan', 'Planning a dinner')}</h2>
       ${checkPanel(check)}
       <div class="card">
         ${sortedMenu(ev).map(menuRow).join('') || '<p class="muted">No dishes yet.</p>'}
@@ -1448,13 +1450,13 @@ function viewBackup() {
       <p>${plural(state.events.length, 'event')}, ${plural(state.guests.length, 'guest')}, ${plural(state.dishes.length, 'dish')}.</p>
       <p class="muted" id="persist"></p>
     </div>
-    <h2>Back up</h2>
+    <h2>Back up ${helpLink('devices', 'Backups and two devices')}</h2>
     <div class="card">
       <p>Everything is stored only on this device. Save a backup file regularly (to Files, iCloud Drive, or email it to yourself).</p>
       <p>${last ? `Last backup: ${new Date(Number(last)).toLocaleString()}` : '<strong>No backup made yet.</strong>'}</p>
       <button class="btn primary" id="export">Save backup file</button>
     </div>
-    <h2>Merge from another device</h2>
+    <h2>Merge from another device ${helpLink('devices', 'Backups and two devices')}</h2>
     <div class="card">
       <p>Using the app on more than one device? On the other device, tap <strong>Save backup file</strong>. Then choose that file here.
         Anything new or edited on either device is kept — where the same thing was edited on both, the most recent edit wins — and things deleted on either device stay deleted.</p>
@@ -1595,6 +1597,36 @@ function viewBackup() {
   });
 }
 
+// ----- help -----
+
+const helpLink = (topic, label = 'How this works') =>
+  `<a class="help-link no-print" href="#/help/${topic}" aria-label="Help: ${esc(label)}">? ${esc(label)}</a>`;
+
+function viewHelp(topicId) {
+  setTitle('Help');
+  const topic = t => `
+    <section class="card help-topic" id="help-${t.id}">
+      <h2 class="card-title">${esc(t.title)}</h2>
+      <p class="help-why">${t.why}</p>
+      <ol class="help-steps">${t.steps.map(s => `<li>${s}</li>`).join('')}</ol>
+      ${t.trouble ? `<h3>Troubleshooting</h3><dl class="help-trouble">${t.trouble.map(([q, a]) => `<dt>${q}</dt><dd>${a}</dd>`).join('')}</dl>` : ''}
+      ${(t.tips || []).map(tip => `<p class="hint">${tip}</p>`).join('')}
+      ${t.shot ? `<img class="help-shot" src="help/${t.shot}.jpg" alt="Screenshot: ${esc(t.title)}">` : ''}
+      <p class="no-print"><a href="#/help">↑ All topics</a></p>
+    </section>`;
+  main.innerHTML = `
+    <div class="help-head">
+      <h1 class="help-title">How to use ${APP_NAME}</h1>
+      <button class="btn no-print" type="button" id="help-print">Print the guide</button>
+    </div>
+    <nav class="card help-toc no-print" aria-label="Help topics">
+      <ol>${HELP_TOPICS.map(t => `<li><a href="#/help/${t.id}">${esc(t.title)}</a></li>`).join('')}</ol>
+    </nav>
+    ${HELP_TOPICS.map(topic).join('')}`;
+  document.getElementById('help-print').addEventListener('click', () => window.print());
+  if (topicId) document.getElementById(`help-${topicId}`)?.scrollIntoView();
+}
+
 function notFound() {
   setTitle('Not found');
   main.innerHTML = `<p>That record no longer exists. <a href="#/">Go home</a></p>`;
@@ -1628,6 +1660,8 @@ function route() {
       return viewBackup();
     case 'import':
       return viewImport();
+    case 'help':
+      return viewHelp(id);
     default:
       return viewHome();
   }
