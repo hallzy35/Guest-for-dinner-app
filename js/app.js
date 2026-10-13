@@ -1617,13 +1617,12 @@ function viewHelp(topicId) {
   main.innerHTML = `
     <div class="help-head">
       <h1 class="help-title">How to use ${APP_NAME}</h1>
-      <button class="btn no-print" type="button" id="help-print">Print the guide</button>
+      <a class="btn primary no-print" href="help/guide.pdf" target="_blank" rel="noopener">Printable guide (PDF)</a>
     </div>
     <nav class="card help-toc no-print" aria-label="Help topics">
       <ol>${HELP_TOPICS.map(t => `<li><a href="#/help/${t.id}">${esc(t.title)}</a></li>`).join('')}</ol>
     </nav>
     ${HELP_TOPICS.map(topic).join('')}`;
-  document.getElementById('help-print').addEventListener('click', () => window.print());
   if (topicId) document.getElementById(`help-${topicId}`)?.scrollIntoView();
 }
 
