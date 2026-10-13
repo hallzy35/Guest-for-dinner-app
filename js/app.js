@@ -1,6 +1,6 @@
 import * as db from './db.js';
 import {
-  CATEGORIES, COMPLEXITY, COURSES, INDEX_MODES, RECEPTION, STYLES, buildIndex, dishSuitability, shoppingList, shoppingText, applyRecipe, autocheck, emptyDish, normalizeDish, planRecipeImport, buildICS, byId, dishHistory, emptyState, findByName, googleCalendarUrl, guestHistory,
+  CATEGORIES, COMPLEXITY, COURSES, INDEX_MODES, RECEPTION, SORT_COLUMNS, STYLES, buildIndex, sortDishes, dishSuitability, shoppingList, shoppingText, applyRecipe, autocheck, emptyDish, normalizeDish, planRecipeImport, buildICS, byId, dishHistory, emptyState, findByName, googleCalendarUrl, guestHistory,
   isFavorite, mergeDishes, mergeGuests, newId, servedEvents, setFavorite, norm, parseDishList, search, sortEventsDesc, splitList, suggest, validateBackup,
 } from './logic.js';
 
@@ -593,6 +593,16 @@ function viewDishIndex(planEventId) {
     } catch {}
   };
   const listEl = document.getElementById('list');
+  listEl.addEventListener('click', e => {
+    const b = e.target.closest('[data-sort]');
+    if (!b) return;
+    const key = b.dataset.sort;
+    const first = SORT_COLUMNS[key].first;
+    const flip = first === 'asc' ? 'desc' : 'asc';
+    s.sort = s.sort?.key === key ? { key, dir: s.sort.dir === first ? flip : first } : { key, dir: first };
+    remember();
+    draw();
+  });
 
   // Guests' favourites come first, even if they've had them before — longest since last had at the top.
   const lastDate = d => {
@@ -740,10 +750,19 @@ function dishTile(d) {
 }
 
 // Rows laid out like the printed cookbook's index pages.
+// Tapping a column header sorts the rows within each group; tapping again reverses it.
 function indexTable(items, action = () => '') {
+  const { sort } = dishIndexState;
+  const rows = sort ? sortDishes(items, sort.key, sort.dir) : items;
+  const th = key => {
+    const on = sort?.key === key;
+    const num = ['total', 'style', 'complexity', 'stars'].includes(key) ? ' class="num"' : '';
+    const arrow = on ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '';
+    return `<th${num} aria-sort="${on ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}"><button type="button" class="th-sort ${on ? 'on' : ''}" data-sort="${key}">${SORT_COLUMNS[key].label}${arrow}</button></th>`;
+  };
   return `<div class="index-scroll"><table class="index-table">
-    <thead><tr><th>Name</th><th>Main ingredient</th><th class="num">Total</th><th class="num">Style</th><th class="num">Comp</th><th>Cat</th><th class="num">Stars</th>${items.length && action(items[0]) ? '<th></th>' : ''}</tr></thead>
-    <tbody>${items
+    <thead><tr>${Object.keys(SORT_COLUMNS).map(th).join('')}${items.length && action(items[0]) ? '<th></th>' : ''}</tr></thead>
+    <tbody>${rows
       .map(
         d => `<tr>
           <td><a href="#/dish/${d.id}">${esc(d.name)}</a></td>

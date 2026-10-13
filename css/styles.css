@@ -429,6 +429,10 @@ ol.steps li { margin-bottom: 4px; }
 .index-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
 .index-table { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
 .index-table th { text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.index-table th { padding: 0; }
+.th-sort { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 10px 12px; min-height: 44px; cursor: pointer; }
+.th-sort:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.th-sort.on { color: var(--accent); }
 .index-table td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .index-table tr:last-child td { border-bottom: 0; }
 .index-table .num { text-align: center; white-space: nowrap; }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildIndex, filterDishes, normalizeDish, totalMinutes } from '../js/logic.js';
+import { buildIndex, filterDishes, normalizeDish, sortDishes, totalMinutes } from '../js/logic.js';
 
 const D = (o) => normalizeDish({ id: o.name, ...o });
 const dishes = [
@@ -41,4 +41,20 @@ test('cooking style groups alphabetically', () => {
 test('filters combine', () => {
   assert.deepEqual(filterDishes(dishes, { minStars: 5, style: 3 }).map(d => d.name), ['Arni Kleftiko']);
   assert.deepEqual(filterDishes(dishes, { q: 'lobster' }).map(d => d.name), ['Basic Steamed Lobster']);
+});
+
+test('sortDishes sorts a group by column with blanks last either way', () => {
+  const items = [
+    { name: 'Beta', total: '1:00', stars: 4, category: 'Dessert' },
+    { name: 'Alpha', total: '', stars: '', category: '' },
+    { name: 'Gamma', total: '0:20', stars: 5, category: 'Appy' },
+    { name: 'Delta', total: '0:20', stars: 3, category: 'Pasta' },
+  ];
+  const names = r => r.map(d => d.name);
+  assert.deepEqual(names(sortDishes(items, 'total', 'asc')), ['Delta', 'Gamma', 'Beta', 'Alpha']);
+  assert.deepEqual(names(sortDishes(items, 'total', 'desc')), ['Beta', 'Delta', 'Gamma', 'Alpha']);
+  assert.deepEqual(names(sortDishes(items, 'stars', 'desc')), ['Gamma', 'Beta', 'Delta', 'Alpha']);
+  assert.deepEqual(names(sortDishes(items, 'category', 'asc')), ['Gamma', 'Delta', 'Beta', 'Alpha']);
+  assert.deepEqual(names(sortDishes(items, 'name', 'desc')), ['Gamma', 'Delta', 'Beta', 'Alpha']);
+  assert.deepEqual(names(sortDishes(items, 'nope')), names(items));
 });

@@ -552,6 +552,39 @@ export function filterDishes(dishes, f = {}) {
 }
 
 // Returns [{ heading, items }] for the chosen index.
+// Columns of the index table that can be tapped to sort, and which way the first tap goes.
+export const SORT_COLUMNS = {
+  name: { label: 'Name', first: 'asc' },
+  mainIngredient: { label: 'Main ingredient', first: 'asc' },
+  total: { label: 'Total', first: 'asc' },
+  style: { label: 'Style', first: 'asc' },
+  complexity: { label: 'Comp', first: 'asc' },
+  category: { label: 'Cat', first: 'asc' },
+  stars: { label: 'Stars', first: 'desc' },
+};
+
+// Sort one group of the index by a column. Blank values always go last; ties fall back to name.
+export function sortDishes(items, key, dir = 'asc') {
+  const value = {
+    name: d => norm(d.name) || null,
+    mainIngredient: d => norm(d.mainIngredient) || null,
+    total: totalMinutes,
+    style: d => Number(d.style) || null,
+    complexity: d => Number(d.complexity) || null,
+    category: d => (d.category && CATEGORIES.includes(d.category) ? catRank(d.category) : null),
+    stars: d => Number(d.stars) || null,
+  }[key];
+  if (!value) return items;
+  const sign = dir === 'desc' ? -1 : 1;
+  return [...items].sort((a, b) => {
+    const va = value(a);
+    const vb = value(b);
+    if (va === null || vb === null) return (va === null) - (vb === null) || byName(a, b);
+    const c = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+    return sign * c || byName(a, b);
+  });
+}
+
 export function buildIndex(dishes, mode = 'category', filters = {}) {
   const f = { ...filters };
   if (mode === 'quick') f.maxMinutes = Math.min(Number(f.maxMinutes) || 30, 30);
