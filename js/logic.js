@@ -420,12 +420,12 @@ export function eventDescription(state, ev) {
 
 export function buildICS(state, events, now = new Date()) {
   const stamp = now.toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//From My Table//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Done Like Dinner//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
   for (const ev of events) {
     const t = eventTimes(ev);
     lines.push(
       'BEGIN:VEVENT',
-      `UID:${ev.id}@from-my-table`,
+      `UID:${ev.id}@from-my-table`, // the app's old name; kept so re-exported events update instead of duplicating
       `DTSTAMP:${stamp}`,
       t.allDay ? `DTSTART;VALUE=DATE:${t.start}` : `DTSTART:${t.start}`,
       t.allDay ? `DTEND;VALUE=DATE:${t.end}` : `DTEND:${t.end}`,

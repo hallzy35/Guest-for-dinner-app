@@ -4,7 +4,7 @@ import {
   isFavorite, mergeDishes, mergeGuests, newId, servedEvents, setFavorite, norm, parseDishList, search, sortEventsDesc, splitList, suggest, validateBackup,
 } from './logic.js';
 
-const APP_NAME = 'From My Table';
+const APP_NAME = 'Done Like Dinner';
 let state = emptyState();
 const main = document.getElementById('main');
 
@@ -1525,9 +1525,9 @@ function viewBackup() {
   });
 
   document.getElementById('export').addEventListener('click', async () => {
-    const data = { app: 'from-my-table', version: 1, exportedAt: new Date().toISOString(), ...state };
+    const data = { app: 'done-like-dinner', version: 1, exportedAt: new Date().toISOString(), ...state };
     try {
-      await deliverFile(`from-my-table-backup-${today()}.json`, 'application/json', JSON.stringify(data, null, 2));
+      await deliverFile(`done-like-dinner-backup-${today()}.json`, 'application/json', JSON.stringify(data, null, 2));
       try {
         localStorage.setItem('lastBackup', String(Date.now()));
       } catch {}

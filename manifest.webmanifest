@@ -1,12 +1,12 @@
 {
-  "name": "From My Table",
-  "short_name": "From My Table",
+  "name": "Done Like Dinner",
+  "short_name": "Done Like Dinner",
   "description": "Who came to dinner, what you served, and what they love (or won’t eat).",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#e4d9d2",
-  "theme_color": "#6e2a5e",
+  "background_color": "#dcd9cc",
+  "theme_color": "#264729",
   "icons": [
     {
       "src": "icons/icon-192.png",

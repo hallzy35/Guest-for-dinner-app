@@ -1,4 +1,4 @@
-# From My Table
+# Done Like Dinner
 
 An iPad app for people who cook for friends and family: record who came to dinner, what you served, what they drank, and how it went — then find it all again in seconds.
 
