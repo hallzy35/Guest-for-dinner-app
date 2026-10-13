@@ -367,7 +367,7 @@ ol.steps li { margin-bottom: 4px; }
 .instructions p { margin: 0 0 12px; }
 .recipe-foot { display: flex; flex-wrap: wrap; gap: 4px 28px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
 .recipe-foot .kv .label { min-width: 0; margin-right: 4px; }
-.stars { color: var(--brand); letter-spacing: 1px; white-space: nowrap; }
+.stars { color: var(--drink-ink); letter-spacing: 1px; white-space: nowrap; }
 .stars-num { color: var(--muted); font-size: 13px; margin-left: 6px; letter-spacing: 0; }
 
 .recipe-edit .recipe-name-label input { font-family: var(--font-display); font-variant: small-caps; font-size: 24px; }
@@ -399,3 +399,30 @@ ol.steps li { margin-bottom: 4px; }
   .recipe-cols { grid-template-columns: minmax(0, 1fr); }
   .recipe-cols > div + div { border-left: 0; padding-left: 0; border-top: 2px solid var(--line); margin-top: 14px; }
 }
+
+/* ---------- dish index ---------- */
+
+.segmented { display: inline-flex; padding: 3px; gap: 3px; border-radius: 12px; background: var(--field); border: 1px solid var(--line); }
+.segmented button { min-height: 38px; padding: 0 16px; border: 0; border-radius: 9px; background: transparent; color: var(--ink); font: inherit; font-weight: 500; cursor: pointer; }
+.segmented button[aria-pressed="true"] { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+
+.index-modes { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 12px; }
+.pill { min-height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 15px; cursor: pointer; }
+.pill.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.pill.ghost { background: transparent; }
+
+.index-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 14px; align-items: end; }
+.index-filters label { display: block; font-weight: 500; font-size: 15px; }
+.index-filters select { margin-top: 4px; }
+.index-filters .hint { grid-column: 1 / -1; margin: 0; }
+.index-count { margin: 4px 0 0; }
+
+.index-heading { font-size: 20px; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 2px solid var(--line); }
+.index-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.index-table { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
+.index-table th { text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.index-table td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.index-table tr:last-child td { border-bottom: 0; }
+.index-table .num { text-align: center; white-space: nowrap; }
+.index-table td:first-child { min-width: 200px; }
+.stars-cell { color: var(--drink-ink); font-weight: 600; }

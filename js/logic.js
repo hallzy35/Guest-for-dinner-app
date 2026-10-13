@@ -481,3 +481,76 @@ export function applyRecipe(existing, recipe) {
   }
   return normalizeDish(out);
 }
+
+// ---------- recipe indexes (as in the back of the printed cookbook) ----------
+
+// "1:45" → 105 minutes; blank or unreadable → null.
+export function totalMinutes(dish) {
+  const m = String(dish.total ?? '').trim().match(/^(\d+):(\d{1,2})$/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+export const INDEX_MODES = {
+  category: 'By category & time',
+  cuisine: 'By cooking style',
+  stars: 'Best rated',
+  quick: 'Under 30 minutes',
+  az: 'A–Z',
+};
+
+const catRank = c => (CATEGORIES.indexOf(c) === -1 ? CATEGORIES.length : CATEGORIES.indexOf(c));
+const byName = (a, b) => a.name.localeCompare(b.name);
+// Fastest first; recipes with no time listed go after the timed ones.
+const byTime = (a, b) => {
+  const x = totalMinutes(a);
+  const y = totalMinutes(b);
+  if (x === null && y === null) return 0;
+  if (x === null) return 1;
+  if (y === null) return -1;
+  return x - y;
+};
+
+export function filterDishes(dishes, f = {}) {
+  const q = norm(f.q);
+  return dishes.filter(d => {
+    if (q && !norm([d.name, d.mainIngredient, d.cuisine, d.source, d.course, ...(d.ingredients || [])].join(' ')).includes(q)) return false;
+    if (f.category && d.category !== f.category) return false;
+    if (f.course && d.course !== f.course) return false;
+    if (f.cuisine && d.cuisine !== f.cuisine) return false;
+    if (f.style && d.style !== Number(f.style)) return false;
+    if (f.complexity && d.complexity !== Number(f.complexity)) return false;
+    if (f.minStars && d.stars < Number(f.minStars)) return false;
+    // A recipe with no time listed is never excluded by a time limit.
+    if (f.maxMinutes) {
+      const t = totalMinutes(d);
+      if (t !== null && t > Number(f.maxMinutes)) return false;
+    }
+    return true;
+  });
+}
+
+// Returns [{ heading, items }] for the chosen index.
+export function buildIndex(dishes, mode = 'category', filters = {}) {
+  const f = { ...filters };
+  if (mode === 'quick') f.maxMinutes = Math.min(Number(f.maxMinutes) || 30, 30);
+  const items = filterDishes(dishes, f);
+  if (mode === 'az') return items.length ? [{ heading: '', items: [...items].sort(byName) }] : [];
+
+  const groupKey = mode === 'cuisine' ? d => d.cuisine || 'No cooking style' : d => d.category || 'No category';
+  const groups = new Map();
+  for (const d of items) {
+    const k = groupKey(d);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(d);
+  }
+  const within = {
+    category: (a, b) => byTime(a, b) || byName(a, b),
+    quick: (a, b) => byTime(a, b) || byName(a, b),
+    stars: (a, b) => b.stars - a.stars || byName(a, b),
+    cuisine: (a, b) => catRank(a.category) - catRank(b.category) || byName(a, b),
+  }[mode];
+  const headings = [...groups.keys()].sort((a, b) =>
+    mode === 'cuisine' ? a.localeCompare(b) : catRank(a) - catRank(b),
+  );
+  return headings.map(heading => ({ heading, items: groups.get(heading).sort(within) }));
+}

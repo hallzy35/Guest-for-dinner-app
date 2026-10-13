@@ -1,6 +1,6 @@
 import * as db from './db.js';
 import {
-  CATEGORIES, COMPLEXITY, COURSES, RECEPTION, STYLES, applyRecipe, autocheck, emptyDish, normalizeDish, planRecipeImport, buildICS, byId, dishHistory, emptyState, findByName, googleCalendarUrl, guestHistory,
+  CATEGORIES, COMPLEXITY, COURSES, INDEX_MODES, RECEPTION, STYLES, buildIndex, applyRecipe, autocheck, emptyDish, normalizeDish, planRecipeImport, buildICS, byId, dishHistory, emptyState, findByName, googleCalendarUrl, guestHistory,
   mergeDishes, mergeGuests, newId, norm, parseDishList, search, sortEventsDesc, splitList, suggest, validateBackup,
 } from './logic.js';
 
@@ -479,45 +479,152 @@ function starText(n) {
   return `<span class="stars" aria-label="${n} stars">${'★'.repeat(full)}${n % 1 ? '½' : ''}<span class="stars-num">${n}</span></span>`;
 }
 
+// Remembered for the session so leaving a recipe and coming back keeps your place.
+const dishIndexState = { mode: 'category', view: 'cards', showFilters: false, f: {} };
+try {
+  Object.assign(dishIndexState, JSON.parse(sessionStorage.getItem('dishIndex') || '{}'));
+} catch {}
+
 function viewDishIndex() {
   setTitle('Dishes');
+  const s = dishIndexState;
+  const cuisines = [...new Set(state.dishes.map(d => d.cuisine).filter(Boolean))].sort();
+  const opt = (v, label, cur) => `<option value="${esc(v)}" ${String(cur ?? '') === String(v) ? 'selected' : ''}>${esc(label)}</option>`;
   main.innerHTML = `
     <div class="search-row">
-      <input id="filter" type="search" placeholder="Filter by name, ingredient, cooking style…" autocomplete="off">
-      <select id="cat-filter" aria-label="Category"><option value="">All categories</option>${CATEGORIES.map(c => `<option>${esc(c)}</option>`).join('')}</select>
+      <input id="filter" type="search" placeholder="Search name, ingredient, source…" autocomplete="off" value="${esc(s.f.q || '')}">
+      <div class="segmented" role="group" aria-label="View">
+        <button type="button" data-view="cards" aria-pressed="${s.view === 'cards'}">Cards</button>
+        <button type="button" data-view="list" aria-pressed="${s.view === 'list'}">Index</button>
+      </div>
+    </div>
+    <div class="index-modes" role="group" aria-label="Sort">
+      ${Object.entries(INDEX_MODES).map(([k, v]) => `<button type="button" class="pill ${s.mode === k ? 'on' : ''}" data-mode="${k}" aria-pressed="${s.mode === k}">${esc(v)}</button>`).join('')}
+      <button type="button" class="pill ghost" id="toggle-filters" aria-expanded="${s.showFilters}">Filters${activeFilterCount() ? ` (${activeFilterCount()})` : ''}</button>
+    </div>
+    <div class="card index-filters" id="filters" ${s.showFilters ? '' : 'hidden'}>
+      <label>Category <select data-f="category">${opt('', 'Any')}${CATEGORIES.map(c => opt(c, c, s.f.category)).join('')}</select></label>
+      <label>Course <select data-f="course">${opt('', 'Any')}${COURSES.map(c => opt(c, c, s.f.course)).join('')}</select></label>
+      <label>Cooking style <select data-f="cuisine">${opt('', 'Any')}${cuisines.map(c => opt(c, c, s.f.cuisine)).join('')}</select></label>
+      <label>Style <select data-f="style">${opt('', 'Any')}${Object.entries(STYLES).map(([n, l]) => opt(n, `${n} · ${l}`, s.f.style)).join('')}</select></label>
+      <label>Complexity <select data-f="complexity">${opt('', 'Any')}${Object.entries(COMPLEXITY).map(([n, l]) => opt(n, `${n} · ${l}`, s.f.complexity)).join('')}</select></label>
+      <label>Stars <select data-f="minStars">${opt('', 'Any')}${[5, 4.5, 4, 3.5, 3].map(n => opt(n, `${n}+`, s.f.minStars)).join('')}</select></label>
+      <label>Total time <select data-f="maxMinutes">${opt('', 'Any')}${[[15, 'Up to 15 min'], [30, 'Up to 30 min'], [45, 'Up to 45 min'], [60, 'Up to 1 hour'], [120, 'Up to 2 hours']].map(([n, l]) => opt(n, l, s.f.maxMinutes)).join('')}</select></label>
+      <button type="button" class="btn" id="clear-filters">Clear filters</button>
+      <p class="hint">Time limits include recipes with no time listed.</p>
     </div>
     <div id="list"></div>`;
-  const filter = document.getElementById('filter');
-  const cat = document.getElementById('cat-filter');
-  const listEl = document.getElementById('list');
-  const draw = () => {
-    const q = norm(filter.value);
-    const items = state.dishes
-      .filter(d => !cat.value || d.category === cat.value)
-      .filter(d => !q || norm([d.name, d.mainIngredient, d.cuisine, d.source, d.course, ...(d.ingredients || [])].join(' ')).includes(q))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    listEl.innerHTML = items.length
-      ? `<div class="recipe-grid-list">${items
-          .map(d => {
-            const served = dishHistory(state, d.id).length;
-            const meta = [d.category, d.course].filter(Boolean).map(esc).join(' · ');
-            return `<a class="card link-card recipe-tile" href="#/dish/${d.id}">
-              <div class="recipe-tile-name">${esc(d.name)}</div>
-              ${meta ? `<div class="muted small">${meta}</div>` : ''}
-              ${d.mainIngredient ? `<div class="small">${esc(d.mainIngredient)}</div>` : ''}
-              <div class="recipe-tile-foot">
-                ${starText(d.stars)}
-                ${d.total ? `<span class="muted small">⏱ ${esc(d.total)}</span>` : ''}
-                <span class="muted small">${served ? `served ${plural(served, 'time')}` : 'not served yet'}</span>
-              </div>
-            </a>`;
-          })
-          .join('')}</div>`
-      : `<p class="muted">${state.dishes.length ? 'No dishes match.' : 'No dishes yet. Add them from Settings → Add dishes, or type one into an event’s menu.'}</p>`;
+
+  const save = () => {
+    try {
+      sessionStorage.setItem('dishIndex', JSON.stringify(s));
+    } catch {}
   };
-  filter.addEventListener('input', draw);
-  cat.addEventListener('change', draw);
+  const listEl = document.getElementById('list');
+
+  const draw = () => {
+    const groups = buildIndex(state.dishes, s.mode, s.f);
+    const total = groups.reduce((n, g) => n + g.items.length, 0);
+    if (!total) {
+      listEl.innerHTML = `<p class="muted">${state.dishes.length ? 'No dishes match.' : 'No dishes yet. Add them from Settings → Add dishes, or type one into an event’s menu.'}</p>`;
+      return;
+    }
+    const count = `<p class="muted small index-count">${plural(total, 'recipe')}</p>`;
+    listEl.innerHTML =
+      count +
+      groups
+        .map(g => {
+          const head = g.heading ? `<h2 class="index-heading">${esc(s.mode === 'cuisine' ? g.heading : CATEGORY_HEADINGS[g.heading] || g.heading)} <span class="muted small">${g.items.length}</span></h2>` : '';
+          return head + (s.view === 'list' ? indexTable(g.items) : `<div class="recipe-grid-list">${g.items.map(dishTile).join('')}</div>`);
+        })
+        .join('');
+  };
+
+  document.getElementById('filter').addEventListener(
+    'input',
+    debounce(e => {
+      s.f.q = e.target.value;
+      save();
+      draw();
+    }, 150),
+  );
+  main.querySelectorAll('[data-mode]').forEach(b =>
+    b.addEventListener('click', () => {
+      s.mode = b.dataset.mode;
+      save();
+      viewDishIndex();
+    }),
+  );
+  main.querySelectorAll('[data-view]').forEach(b =>
+    b.addEventListener('click', () => {
+      s.view = b.dataset.view;
+      save();
+      viewDishIndex();
+    }),
+  );
+  document.getElementById('toggle-filters').addEventListener('click', () => {
+    s.showFilters = !s.showFilters;
+    save();
+    viewDishIndex();
+  });
+  main.querySelectorAll('[data-f]').forEach(sel =>
+    sel.addEventListener('change', () => {
+      if (sel.value) s.f[sel.dataset.f] = sel.value;
+      else delete s.f[sel.dataset.f];
+      save();
+      viewDishIndex();
+    }),
+  );
+  document.getElementById('clear-filters').addEventListener('click', () => {
+    s.f = s.f.q ? { q: s.f.q } : {};
+    save();
+    viewDishIndex();
+  });
   draw();
+}
+
+// Group names as printed in the cookbook's index pages.
+const CATEGORY_HEADINGS = {
+  Appy: 'Appetizers', Pasta: 'Pastas', Starch: 'Other Starches (rice & potato dishes)', 'Entrée': 'Entrées',
+  Veggie: 'Veggie Dishes', Dessert: 'Desserts', Snack: 'Snacks', Other: 'Other Stuff (sauces & things)',
+};
+
+function activeFilterCount() {
+  return Object.keys(dishIndexState.f).filter(k => k !== 'q').length;
+}
+
+function dishTile(d) {
+  const served = dishHistory(state, d.id).length;
+  const meta = [d.category, d.course].filter(Boolean).map(esc).join(' · ');
+  return `<a class="card link-card recipe-tile" href="#/dish/${d.id}">
+    <div class="recipe-tile-name">${esc(d.name)}</div>
+    ${meta ? `<div class="muted small">${meta}</div>` : ''}
+    ${d.mainIngredient ? `<div class="small">${esc(d.mainIngredient)}</div>` : ''}
+    <div class="recipe-tile-foot">
+      ${starText(d.stars)}
+      ${d.total ? `<span class="muted small">⏱ ${esc(d.total)}</span>` : ''}
+      <span class="muted small">${served ? `served ${plural(served, 'time')}` : 'not served yet'}</span>
+    </div>
+  </a>`;
+}
+
+// Rows laid out like the printed cookbook's index pages.
+function indexTable(items) {
+  return `<div class="index-scroll"><table class="index-table">
+    <thead><tr><th>Name</th><th>Main ingredient</th><th class="num">Total</th><th class="num">Style</th><th class="num">Comp</th><th>Cat</th><th class="num">Stars</th></tr></thead>
+    <tbody>${items
+      .map(
+        d => `<tr>
+          <td><a href="#/dish/${d.id}">${esc(d.name)}</a></td>
+          <td class="muted">${esc(d.mainIngredient)}</td>
+          <td class="num">${esc(d.total) || '—'}</td>
+          <td class="num">${d.style || '—'}</td>
+          <td class="num">${d.complexity || '—'}</td>
+          <td>${d.category ? `${CATEGORIES.indexOf(d.category) + 1}` : '—'}</td>
+          <td class="num stars-cell">${d.stars || '—'}</td>
+        </tr>`,
+      )
+      .join('')}</tbody></table></div>`;
 }
 
 function viewDish(id, editing = false) {
