@@ -1,6 +1,8 @@
-// Offline support: serve the app shell from cache, refresh it in the background.
+// Offline support: serve the app shell from a cache that is filled in one go per version.
 // Bump VERSION whenever app files change so iPads pick up the new version.
-const VERSION = 'v11';
+// Each version's files are fetched together, bypassing the browser's HTTP cache, and never
+// refreshed piecemeal — so a new app.js can't end up paired with an old logic.js.
+const VERSION = 'v12';
 const CACHE = `from-my-table-${VERSION}`;
 const SHELL = [
   './',
@@ -16,7 +18,12 @@ const SHELL = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches
+      .open(CACHE)
+      .then(c => c.addAll(SHELL.map(url => new Request(url, { cache: 'reload' }))))
+      .then(() => self.skipWaiting()),
+  );
 });
 
 self.addEventListener('activate', e => {
@@ -29,15 +36,5 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
-  e.respondWith(
-    caches.match(e.request, { ignoreSearch: true }).then(cached => {
-      const network = fetch(e.request)
-        .then(res => {
-          if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
-          return res;
-        })
-        .catch(() => cached);
-      return cached || network;
-    }),
-  );
+  e.respondWith(caches.match(e.request, { ignoreSearch: true }).then(cached => cached || fetch(e.request)));
 });
