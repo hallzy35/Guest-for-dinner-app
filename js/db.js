@@ -1,8 +1,9 @@
 // Thin IndexedDB wrapper. All data stays on this device.
 
 const DB_NAME = 'hostess-diary';
-const DB_VERSION = 1;
-export const STORES = ['guests', 'dishes', 'events'];
+const DB_VERSION = 2;
+// 'deleted' holds a note of each deletion so merging another device's backup doesn't bring it back.
+export const STORES = ['guests', 'dishes', 'events', 'deleted'];
 
 let dbPromise;
 

@@ -1,7 +1,7 @@
 import * as db from './db.js';
 import {
   CATEGORIES, COMPLEXITY, COURSES, INDEX_MODES, RECEPTION, SORT_COLUMNS, STYLES, buildIndex, sortDishes, dishSuitability, shoppingList, shoppingText, applyRecipe, autocheck, emptyDish, normalizeDish, planRecipeImport, buildICS, byId, dishHistory, emptyState, findByName, googleCalendarUrl, guestHistory,
-  isFavorite, mergeDishes, mergeGuests, newId, servedEvents, setFavorite, norm, parseDishList, search, sortEventsDesc, splitList, suggest, validateBackup,
+  isFavorite, mergeBackup, mergeDishes, mergeGuests, newId, servedEvents, setFavorite, norm, parseDishList, search, sortEventsDesc, splitList, suggest, validateBackup,
 } from './logic.js';
 
 const APP_NAME = 'Done Like Dinner';
@@ -145,7 +145,9 @@ try {
 
 // ---------- persistence ----------
 
+// Every save is stamped so a backup from another device can be merged in (newest edit wins).
 async function save(store, record) {
+  record.updatedAt = new Date().toISOString();
   const list = state[store];
   const i = list.findIndex(x => x.id === record.id);
   if (i === -1) list.push(record);
@@ -160,6 +162,9 @@ async function save(store, record) {
 async function removeRecord(store, id) {
   state[store] = state[store].filter(x => x.id !== id);
   await db.remove(store, id);
+  const note = { id, store, deletedAt: new Date().toISOString() };
+  state.deleted = [...state.deleted.filter(t => t.id !== id), note];
+  await db.put('deleted', note);
 }
 
 async function createGuest(name) {
@@ -1445,13 +1450,20 @@ function viewBackup() {
     </div>
     <h2>Back up</h2>
     <div class="card">
-      <p>Everything is stored only on this iPad. Save a backup file regularly (to Files, iCloud Drive, or email it to yourself).</p>
+      <p>Everything is stored only on this device. Save a backup file regularly (to Files, iCloud Drive, or email it to yourself).</p>
       <p>${last ? `Last backup: ${new Date(Number(last)).toLocaleString()}` : '<strong>No backup made yet.</strong>'}</p>
       <button class="btn primary" id="export">Save backup file</button>
     </div>
+    <h2>Merge from another device</h2>
+    <div class="card">
+      <p>Using the app on more than one device? On the other device, tap <strong>Save backup file</strong>. Then choose that file here.
+        Anything new or edited on either device is kept — where the same thing was edited on both, the most recent edit wins — and things deleted on either device stay deleted.</p>
+      <p class="hint">To bring both devices up to date: merge here, save a backup here, then merge that backup on the other device.</p>
+      <input type="file" id="merge" accept="application/json,.json">
+    </div>
     <h2>Restore</h2>
     <div class="card">
-      <p>Restoring <strong>replaces</strong> everything in the app with the contents of the backup file.</p>
+      <p>Restoring <strong>replaces</strong> everything in the app with the contents of the backup file. To combine two devices’ data, use Merge above instead.</p>
       <input type="file" id="import" accept="application/json,.json">
     </div>`;
 
@@ -1535,6 +1547,33 @@ function viewBackup() {
       viewBackup();
     } catch (err) {
       if (err.name !== 'AbortError') alert('Backup failed: ' + err.message);
+    }
+  });
+
+  document.getElementById('merge').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const { state: next, summary } = mergeBackup(state, validateBackup(JSON.parse(await file.text())));
+      const line = (label, c) => {
+        const parts = [c.added && `${c.added} new`, c.updated && `${c.updated} updated`, c.removed && `${c.removed} deleted`].filter(Boolean);
+        return `${label}: ${parts.length ? parts.join(', ') : 'no changes'}`;
+      };
+      const msg = [line('Guests', summary.guests), line('Dishes', summary.dishes), line('Events', summary.events)];
+      const changes = ['guests', 'dishes', 'events'].some(k => Object.values(summary[k]).some(Boolean));
+      if (!changes) {
+        alert('Nothing to merge — this device already has everything in that backup.');
+        return;
+      }
+      if (!confirm(`Merge this backup into this device?\n\n${msg.join('\n')}`)) return;
+      await db.replaceAll(next);
+      state = next;
+      toast('Merged');
+      viewBackup();
+    } catch (err) {
+      alert('Could not merge: ' + err.message);
+    } finally {
+      e.target.value = '';
     }
   });
 

@@ -56,7 +56,7 @@ export function newId() {
 }
 
 export function emptyState() {
-  return { guests: [], dishes: [], events: [] };
+  return { guests: [], dishes: [], events: [], deleted: [] };
 }
 
 export function byId(list, id) {
@@ -226,7 +226,88 @@ export function validateBackup(data) {
     events: data.events.map(e => ({
       title: '', time: '', beverages: '', worked: '', didnt: '', notes: '', guestIds: [], dishes: [], ...e,
     })),
+    deleted: Array.isArray(data.deleted) ? data.deleted.filter(t => t && typeof t.id === 'string' && t.deletedAt) : [],
   };
+}
+
+// ---------- merging a backup from another device ----------
+
+// Combine this device's data with a backup from another device.
+// Every save stamps a record with updatedAt and every delete leaves a note in `deleted`, so:
+//   - a record on only one side is kept; on both sides, the more recent edit wins (ties keep this device's);
+//   - a deletion sticks unless the record was edited again after it was deleted.
+// Guests and dishes with different ids but the same name are treated as one record, so the same
+// recipe file loaded on both devices doesn't double up.
+// Same record apart from when it was saved (e.g. the same recipe file loaded on both devices).
+function sameContent(a, b) {
+  const canon = v =>
+    Array.isArray(v) ? `[${v.map(canon).join(',')}]`
+    : v && typeof v === 'object' ? `{${Object.keys(v).filter(k => k !== 'updatedAt').sort().map(k => `${k}:${canon(v[k])}`).join(',')}}`
+    : JSON.stringify(v);
+  return canon(a) === canon(b);
+}
+
+export function mergeBackup(local, incoming) {
+  const stamp = r => r?.updatedAt || '';
+  const deleted = new Map();
+  for (const t of [...(local.deleted || []), ...(incoming.deleted || [])]) {
+    if (!deleted.has(t.id) || t.deletedAt > deleted.get(t.id).deletedAt) deleted.set(t.id, t);
+  }
+
+  // Incoming guests/dishes that are the same as a local one under a different id.
+  const sameAs = { guests: new Map(), dishes: new Map() };
+  for (const store of ['guests', 'dishes']) {
+    for (const r of incoming[store]) {
+      if (byId(local[store], r.id)) continue;
+      const twin = findByName(local[store], r.name);
+      if (twin && !byId(incoming[store], twin.id)) sameAs[store].set(r.id, twin.id);
+    }
+  }
+  const gid = id => sameAs.guests.get(id) || id;
+  const did = id => sameAs.dishes.get(id) || id;
+  const theirs = {
+    guests: incoming.guests.map(g => ({ ...g, id: gid(g.id), favorites: [...new Set((g.favorites || []).map(did))] })),
+    dishes: incoming.dishes.map(d => ({ ...d, id: did(d.id) })),
+    events: incoming.events.map(e => ({
+      ...e,
+      guestIds: [...new Set(e.guestIds.map(gid))],
+      dishes: e.dishes.map(x => ({ ...x, dishId: did(x.dishId) })).filter((x, i, a) => a.findIndex(y => y.dishId === x.dishId) === i),
+    })),
+  };
+
+  const out = { deleted: [...deleted.values()] };
+  const summary = { matchedByName: sameAs.guests.size + sameAs.dishes.size };
+  for (const store of ['guests', 'dishes', 'events']) {
+    const counts = { added: 0, updated: 0, removed: 0 };
+    const ids = [...new Set([...local[store].map(r => r.id), ...theirs[store].map(r => r.id)])];
+    out[store] = [];
+    for (const id of ids) {
+      const mine = byId(local[store], id);
+      const other = byId(theirs[store], id);
+      const pick = !mine ? other : !other || sameContent(mine, other) || stamp(other) <= stamp(mine) ? mine : other;
+      const gone = deleted.get(id);
+      if (gone && gone.deletedAt >= stamp(pick)) {
+        if (mine) counts.removed++;
+        continue;
+      }
+      if (!mine) counts.added++;
+      else if (pick !== mine) counts.updated++;
+      out[store].push(pick);
+    }
+    summary[store] = counts;
+  }
+
+  // Drop references to guests and dishes that were deleted.
+  const live = id => !deleted.has(id) || out.guests.some(g => g.id === id) || out.dishes.some(d => d.id === id);
+  out.events = out.events.map(e =>
+    e.guestIds.every(live) && e.dishes.every(x => live(x.dishId))
+      ? e
+      : { ...e, guestIds: e.guestIds.filter(live), dishes: e.dishes.filter(x => live(x.dishId)) },
+  );
+  out.guests = out.guests.map(g =>
+    (g.favorites || []).every(live) ? g : { ...g, favorites: g.favorites.filter(live) },
+  );
+  return { state: out, summary };
 }
 
 // ---------- merging duplicates ----------
