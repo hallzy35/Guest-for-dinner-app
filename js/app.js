@@ -271,7 +271,7 @@ function homeDefault() {
     return `<div class="empty">
       <h2>Welcome</h2>
       <p>Start by recording a past dinner from your journal, or planning the next one. Guests and dishes you type are saved automatically, so they autocomplete next time.</p>
-      <p class="btn-row" style="justify-content:center"><a class="btn primary" href="#/event/new">＋ Add your first event</a> <a class="btn" href="#/import">Add dishes from your cookbook</a></p>
+      <p class="btn-row center"><a class="btn primary" href="#/event/new">＋ Add your first event</a> <a class="btn" href="#/import">Add dishes from your cookbook</a></p>
     </div>`;
   }
   const t = today();
@@ -619,7 +619,7 @@ function viewImport() {
             </li>`;
           })
           .join('')}</ul>
-        <p class="btn-row" style="margin-top:14px"><button class="btn primary" id="bulk-save" type="button"></button></p>
+        <p class="btn-row spaced"><button class="btn primary" id="bulk-save" type="button"></button></p>
       </div>`;
     const saveBtn = document.getElementById('bulk-save');
     const checked = () => rows.map((_, i) => i).filter(i => document.getElementById(`imp-on-${i}`).checked);

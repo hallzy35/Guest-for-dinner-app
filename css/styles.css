@@ -193,6 +193,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .btn.danger { color: var(--allergy-ink); border-color: var(--allergy-ink); background: transparent; }
 .btn:disabled { opacity: .5; cursor: default; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn-row.center { justify-content: center; }
+.btn-row.spaced { margin-top: 14px; }
 .danger-zone { margin-top: 32px; display: flex; justify-content: flex-end; }
 
 .search-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
