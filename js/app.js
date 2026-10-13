@@ -24,6 +24,11 @@ function fmtDate(iso) {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+const ICON = path =>
+  `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+// Drawn in the text colour so it stays legible on any background (the 🥂 emoji is too pale).
+const DRINK_ICON = ICON('<path d="M7 3h10l-1 6a4 4 0 0 1-8 0z"/><path d="M12 13v8M8 21h8"/>').replace('width="18" height="18"', 'class="inline-icon"');
+
 const guestName = id => byId(state.guests, id)?.name ?? '(deleted guest)';
 const dishName = id => byId(state.dishes, id)?.name ?? '(deleted dish)';
 const isPlanned = e => (e.date || '') > today();
@@ -53,7 +58,7 @@ function receptionTag(r) {
 
 function prefTags(g) {
   const out = [];
-  if (g.drinks) out.push(`<span class="tag drink">🥂 ${esc(g.drinks)}</span>`);
+  if (g.drinks) out.push(`<span class="tag drink">${DRINK_ICON} ${esc(g.drinks)}</span>`);
   for (const a of g.allergies || []) out.push(`<span class="tag allergy">⚠︎ Allergy: ${esc(a)}</span>`);
   for (const d of g.dislikes || []) out.push(`<span class="tag dislike">✗ ${esc(d)}</span>`);
   if (g.likes) out.push(`<span class="tag like">♥ ${esc(g.likes)}</span>`);
@@ -119,35 +124,33 @@ function downloadCalendar(name, ics) {
 
 // ---------- theme ----------
 
-const ICON = path => `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">${path}</svg>`;
 const THEME_LABEL = {
   auto: ICON('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/>') + ' Auto',
   light: ICON('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>') + ' Light',
   dark: ICON('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>') + ' Dark',
 };
 
+
+function savedTheme() {
+  try {
+    const t = localStorage.getItem('theme');
+    return t === 'light' || t === 'dark' ? t : 'auto';
+  } catch {
+    return 'auto';
+  }
+}
+
 function applyTheme(t) {
   if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
   else delete document.documentElement.dataset.theme;
-  const btn = document.getElementById('theme-btn');
-  btn.innerHTML = THEME_LABEL[t] || THEME_LABEL.auto;
-  btn.setAttribute('aria-label', `Appearance: ${t}. Tap to change.`);
 }
 
-function initTheme() {
-  let t = 'auto';
+function setTheme(t) {
   try {
-    t = localStorage.getItem('theme') || 'auto';
+    if (t === 'auto') localStorage.removeItem('theme');
+    else localStorage.setItem('theme', t);
   } catch {}
   applyTheme(t);
-  document.getElementById('theme-btn').addEventListener('click', () => {
-    const order = ['auto', 'light', 'dark'];
-    t = order[(order.indexOf(t) + 1) % order.length];
-    try {
-      localStorage.setItem('theme', t);
-    } catch {}
-    applyTheme(t);
-  });
 }
 
 // ---------- persistence ----------
@@ -266,7 +269,7 @@ function backupReminder() {
   if (!total) return '';
   const days = last ? (Date.now() - Number(last)) / 86400000 : Infinity;
   if (days < 30) return '';
-  return `<div class="notice">Your records live only on this iPad. ${last ? `Last backup was ${Math.floor(days)} days ago.` : 'You have never made a backup.'} <a href="#/backup">Back up now</a></div>`;
+  return `<div class="notice">Your records live only on this iPad. ${last ? `Last backup was ${Math.floor(days)} days ago.` : 'You have never made a backup.'} <a href="#/settings">Back up now</a></div>`;
 }
 
 function viewHome() {
@@ -340,7 +343,7 @@ function guestSummary(g) {
     ${hist.length ? `<table class="hist"><tbody>${hist
       .map(
         e => `<tr><td class="nowrap"><a href="#/event/${e.id}">${fmtDate(e.date)}</a>${plannedTag(e)}</td>
-          <td>${menuLine(e)}${e.beverages ? `<div class="muted">🍷 ${esc(e.beverages)}</div>` : ''}</td></tr>`,
+          <td>${menuLine(e)}${e.beverages ? `<div class="muted">${DRINK_ICON} ${esc(e.beverages)}</div>` : ''}</td></tr>`,
       )
       .join('')}</tbody></table>` : ''}
   </div>`;
@@ -905,12 +908,20 @@ function checkPanel({ served, conflicts }) {
 // ----- backup -----
 
 function viewBackup() {
-  setTitle('Backup');
+  setTitle('Settings');
   let last;
   try {
     last = localStorage.getItem('lastBackup');
   } catch {}
+  const theme = savedTheme();
   main.innerHTML = `
+    <h2>Appearance</h2>
+    <div class="card">
+      <div class="segmented" role="group" aria-label="Appearance">
+        ${['auto', 'light', 'dark'].map(t => `<button type="button" data-theme-pick="${t}" aria-pressed="${t === theme}">${THEME_LABEL[t]}</button>`).join('')}
+      </div>
+      <p class="hint">Auto follows your iPad’s Light or Dark setting (Settings → Display &amp; Brightness). Pick Light or Dark only if you want this app to ignore it.</p>
+    </div>
     <h2>Your data</h2>
     <div class="card">
       <p>${plural(state.events.length, 'event')}, ${plural(state.guests.length, 'guest')}, ${plural(state.dishes.length, 'dish')}.</p>
@@ -927,6 +938,13 @@ function viewBackup() {
       <p>Restoring <strong>replaces</strong> everything in the app with the contents of the backup file.</p>
       <input type="file" id="import" accept="application/json,.json">
     </div>`;
+
+  main.querySelectorAll('[data-theme-pick]').forEach(b =>
+    b.addEventListener('click', () => {
+      setTheme(b.dataset.themePick);
+      main.querySelectorAll('[data-theme-pick]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    }),
+  );
 
   navigator.storage?.persisted?.().then(p => {
     document.getElementById('persist').textContent = p
@@ -977,7 +995,7 @@ function route() {
   const [, page, id] = location.hash.replace(/^#/, '').split('/');
   document.querySelectorAll('nav a').forEach(a => {
     const target = a.getAttribute('href').split('/')[1];
-    const map = { guest: 'guests', dish: 'dishes', event: 'events', import: 'dishes' };
+    const map = { guest: 'guests', dish: 'dishes', event: 'events', import: 'dishes', backup: 'settings' };
     a.classList.toggle('active', target === (map[page] || page || ''));
   });
   window.scrollTo(0, 0);
@@ -993,6 +1011,7 @@ function route() {
       return viewGuest(id);
     case 'dish':
       return viewDish(id);
+    case 'settings':
     case 'backup':
       return viewBackup();
     case 'import':
@@ -1003,7 +1022,7 @@ function route() {
 }
 
 async function start() {
-  initTheme();
+  applyTheme(savedTheme());
   try {
     state = { ...emptyState(), ...(await db.loadAll()) };
   } catch (err) {

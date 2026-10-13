@@ -1,30 +1,28 @@
-/* From My Table: a kitchen notebook, not a spreadsheet.
-   Teal is the one accent for actions; coral is reserved for the brand and "upcoming".
-   Status colours (allergy, dislike, served, loved) are semantic and never used for decoration. */
+/* From My Table: aubergine for every action, saffron for the brand mark and drinks.
+   One colour, one meaning: status colours (allergy, dislike, served, loved) are never decoration.
+   Every text/background pair meets Apple's preferred 7:1 contrast in both themes. */
 :root {
-  --bg: #f5f8f7;
+  --bg: #fcf9f6;
   --surface: #ffffff;
-  --field: #eef3f2;
-  --ink: #13242a;
-  --muted: #5a6d72;
-  --line: #dbe4e2;
-  --accent: #0b7a75;
-  --accent-hover: #075e5a;
+  --field: #f6f0eb;
+  --ink: #241a22;
+  --muted: #5b4a56;
+  --line: #ecdfe6;
+  --accent: #6e2a5e;
+  --accent-hover: #561f49;
   --accent-ink: #ffffff;
-  --accent-soft: #dff3f1;
-  --coral: #e85a3c;
-  --coral-soft: #ffe7e0;
-  --allergy-bg: #fde7e6;
-  --allergy-ink: #b42318;
-  --dislike-bg: #fff0db;
-  --dislike-ink: #94470a;
-  --served-bg: #e6efff;
-  --served-ink: #2350b8;
-  --like-bg: #e2f5e9;
-  --like-ink: #1d743c;
-  --drink-bg: #f1e9fd;
-  --drink-ink: #6633ad;
-  --shadow: 0 1px 2px rgba(19, 36, 42, .06), 0 4px 16px rgba(19, 36, 42, .05);
+  --accent-soft: #f4e5ef;
+  --brand: #e8a020;
+  --allergy-bg: #fde8e6;
+  --allergy-ink: #92140b;
+  --dislike-bg: #fdebdc;
+  --dislike-ink: #7f360a;
+  --served-bg: #e7eefb;
+  --served-ink: #1c418f;
+  --like-bg: #e3f2e5;
+  --like-ink: #165426;
+  --drink-ink: #6e4300;
+  --shadow: 0 1px 2px rgba(36, 26, 34, .06), 0 4px 16px rgba(110, 42, 94, .06);
   --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   color-scheme: light;
@@ -32,58 +30,60 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0d1619;
-    --surface: #142125;
-    --field: #1a2b30;
-    --ink: #e6efed;
-    --muted: #93a6aa;
-    --line: #25383d;
-    --accent: #3ccfc0;
-    --accent-hover: #6adcd0;
-    --accent-ink: #052826;
-    --accent-soft: #123c3a;
-    --coral: #ff8a6e;
-    --coral-soft: #44241c;
-    --allergy-bg: #4a1c1b;
-    --allergy-ink: #ffb4ab;
-    --dislike-bg: #45300f;
-    --dislike-ink: #ffcc80;
-    --served-bg: #172f4f;
-    --served-ink: #a9c7ff;
-    --like-bg: #163824;
-    --like-ink: #8fdfad;
-    --drink-bg: #2d2145;
-    --drink-ink: #d4b9ff;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .3);
+    --bg: #1a1418;
+    --surface: #241c22;
+    --field: #2e242b;
+    --ink: #f3ecf0;
+    --muted: #c2b2bd;
+    --line: #3a2e37;
+    --accent: #eaa9d9;
+    --accent-hover: #f4c6e7;
+    --accent-ink: #2a0f23;
+    --accent-soft: #3d2236;
+    --brand: #ffc24d;
+    --allergy-bg: #4d1b18;
+    --allergy-ink: #ffbcb2;
+    --dislike-bg: #47270e;
+    --dislike-ink: #ffc795;
+    --served-bg: #1c2a47;
+    --served-ink: #b8cdff;
+    --like-bg: #183420;
+    --like-ink: #a8e2b2;
+    --drink-ink: #ffd88a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .35);
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #0d1619;
-  --surface: #142125;
-  --field: #1a2b30;
-  --ink: #e6efed;
-  --muted: #93a6aa;
-  --line: #25383d;
-  --accent: #3ccfc0;
-  --accent-hover: #6adcd0;
-  --accent-ink: #052826;
-  --accent-soft: #123c3a;
-  --coral: #ff8a6e;
-  --coral-soft: #44241c;
-  --allergy-bg: #4a1c1b;
-  --allergy-ink: #ffb4ab;
-  --dislike-bg: #45300f;
-  --dislike-ink: #ffcc80;
-  --served-bg: #172f4f;
-  --served-ink: #a9c7ff;
-  --like-bg: #163824;
-  --like-ink: #8fdfad;
-  --drink-bg: #2d2145;
-  --drink-ink: #d4b9ff;
-  --shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  --bg: #1a1418;
+  --surface: #241c22;
+  --field: #2e242b;
+  --ink: #f3ecf0;
+  --muted: #c2b2bd;
+  --line: #3a2e37;
+  --accent: #eaa9d9;
+  --accent-hover: #f4c6e7;
+  --accent-ink: #2a0f23;
+  --accent-soft: #3d2236;
+  --brand: #ffc24d;
+  --allergy-bg: #4d1b18;
+  --allergy-ink: #ffbcb2;
+  --dislike-bg: #47270e;
+  --dislike-ink: #ffc795;
+  --served-bg: #1c2a47;
+  --served-ink: #b8cdff;
+  --like-bg: #183420;
+  --like-ink: #a8e2b2;
+  --drink-ink: #ffd88a;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .35);
   color-scheme: dark;
+}
+
+/* Apple: respect the iPad's Increase Contrast setting. */
+@media (prefers-contrast: more) {
+  :root { --muted: var(--ink); --line: var(--muted); }
+  .card, input, select, textarea, .btn { border-width: 2px; }
 }
 
 * { box-sizing: border-box; }
@@ -114,7 +114,7 @@ header {
   gap: 8px 20px;
   padding: calc(10px + env(safe-area-inset-top)) 20px 10px;
   background: var(--surface);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 3px solid var(--brand);
 }
 
 .brand {
@@ -128,7 +128,7 @@ header {
   letter-spacing: -.01em;
   color: var(--ink);
 }
-.brand::after { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--coral); margin-left: 3px; }
+.brand::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--brand); margin-left: 3px; }
 .brand:hover { text-decoration: none; }
 
 nav { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; }
@@ -144,21 +144,22 @@ nav a {
 nav a:hover { text-decoration: none; color: var(--ink); background: var(--field); }
 nav a.active { background: var(--accent); color: var(--accent-ink); }
 
-.theme-btn {
+.segmented { display: inline-flex; padding: 3px; gap: 3px; border-radius: 12px; background: var(--field); border: 1px solid var(--line); }
+.segmented button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-height: 40px;
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
+  padding: 0 16px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
   color: var(--ink);
   font: inherit;
-  font-size: 15px;
+  font-weight: 500;
   cursor: pointer;
 }
-.theme-btn:hover { background: var(--field); }
+.segmented button[aria-pressed="true"] { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
 
 main { max-width: 920px; margin: 0 auto; padding: 18px 20px 64px; }
 
@@ -253,8 +254,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .tag.allergy { background: var(--allergy-bg); color: var(--allergy-ink); font-weight: 600; }
 .tag.dislike { background: var(--dislike-bg); color: var(--dislike-ink); }
 .tag.like { background: var(--like-bg); color: var(--like-ink); }
-.tag.drink { background: var(--drink-bg); color: var(--drink-ink); }
-.tag.planned { background: var(--coral-soft); color: var(--coral); font-weight: 600; }
+/* Outlined rather than filled, so drinks can't be mistaken for the peach "dislike" tag. */
+.tag.drink { background: transparent; box-shadow: inset 0 0 0 1.5px var(--brand); color: var(--drink-ink); font-weight: 500; }
+.tag svg, .inline-icon { width: 15px; height: 15px; vertical-align: -2px; }
+.tag.planned { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .tag.rec-hit { background: var(--like-bg); color: var(--like-ink); }
 .tag.rec-ok { background: var(--field); color: var(--ink); }
 .tag.rec-miss { background: var(--dislike-bg); color: var(--dislike-ink); }
