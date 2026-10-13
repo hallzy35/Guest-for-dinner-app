@@ -122,36 +122,10 @@ function downloadCalendar(name, ics) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-// ---------- theme ----------
-
-const THEME_LABEL = {
-  auto: ICON('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/>') + ' Auto',
-  light: ICON('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>') + ' Light',
-  dark: ICON('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>') + ' Dark',
-};
-
-
-function savedTheme() {
-  try {
-    const t = localStorage.getItem('theme');
-    return t === 'light' || t === 'dark' ? t : 'auto';
-  } catch {
-    return 'auto';
-  }
-}
-
-function applyTheme(t) {
-  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
-  else delete document.documentElement.dataset.theme;
-}
-
-function setTheme(t) {
-  try {
-    if (t === 'auto') localStorage.removeItem('theme');
-    else localStorage.setItem('theme', t);
-  } catch {}
-  applyTheme(t);
-}
+// Appearance follows the iPad's Light/Dark setting. Clear any override saved by an earlier test build.
+try {
+  localStorage.removeItem('theme');
+} catch {}
 
 // ---------- persistence ----------
 
@@ -913,15 +887,7 @@ function viewBackup() {
   try {
     last = localStorage.getItem('lastBackup');
   } catch {}
-  const theme = savedTheme();
   main.innerHTML = `
-    <h2>Appearance</h2>
-    <div class="card">
-      <div class="segmented" role="group" aria-label="Appearance">
-        ${['auto', 'light', 'dark'].map(t => `<button type="button" data-theme-pick="${t}" aria-pressed="${t === theme}">${THEME_LABEL[t]}</button>`).join('')}
-      </div>
-      <p class="hint">Auto follows your iPad’s Light or Dark setting (Settings → Display &amp; Brightness). Pick Light or Dark only if you want this app to ignore it.</p>
-    </div>
     <h2>Your data</h2>
     <div class="card">
       <p>${plural(state.events.length, 'event')}, ${plural(state.guests.length, 'guest')}, ${plural(state.dishes.length, 'dish')}.</p>
@@ -938,13 +904,6 @@ function viewBackup() {
       <p>Restoring <strong>replaces</strong> everything in the app with the contents of the backup file.</p>
       <input type="file" id="import" accept="application/json,.json">
     </div>`;
-
-  main.querySelectorAll('[data-theme-pick]').forEach(b =>
-    b.addEventListener('click', () => {
-      setTheme(b.dataset.themePick);
-      main.querySelectorAll('[data-theme-pick]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
-    }),
-  );
 
   navigator.storage?.persisted?.().then(p => {
     document.getElementById('persist').textContent = p
@@ -1022,7 +981,6 @@ function route() {
 }
 
 async function start() {
-  applyTheme(savedTheme());
   try {
     state = { ...emptyState(), ...(await db.loadAll()) };
   } catch (err) {
